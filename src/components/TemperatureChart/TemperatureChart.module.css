@@ -1,0 +1,76 @@
+.chartPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 24px;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.toggles {
+  display: flex;
+  gap: 12px;
+}
+
+.toggleBtn {
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  border: 2px solid;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 80px;
+  touch-action: manipulation;
+}
+
+.toggleBtn:active {
+  transform: scale(0.95);
+}
+
+.toggleBtn.bk {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+.toggleBtn.mlt {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.toggleBtn.hlt {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.toggleBtn.off {
+  background: transparent;
+  border-color: #475569;
+  color: #64748b;
+}
+
+.chartContainer {
+  flex: 1;
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  min-height: 400px;
+}

@@ -1,0 +1,51 @@
+.bottomNav {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: #1e293b;
+  border-top: 2px solid #334155;
+  padding: 12px 0;
+  box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.navBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 12px 24px;
+  transition: all 0.2s;
+  border-radius: 8px;
+  min-width: 100px;
+  touch-action: manipulation;
+}
+
+.navBtn:active {
+  transform: scale(0.95);
+}
+
+.navBtn.active {
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.navBtn:hover:not(.active) {
+  color: #94a3b8;
+  background: rgba(100, 116, 139, 0.1);
+}
+
+.icon {
+  width: 28px;
+  height: 28px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
