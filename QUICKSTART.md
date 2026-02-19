@@ -1,5 +1,11 @@
 # Brew System v3 - Quick Start Guide
 
+Terminal 1:
+python backend/main.py
+
+Terminal 2:
+npm run dev
+
 ## Development (Desktop Browser)
 
 ```bash

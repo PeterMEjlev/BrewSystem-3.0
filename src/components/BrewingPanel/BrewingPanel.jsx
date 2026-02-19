@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { brewSystem } from '../../utils/mockHardware';
+import { hardwareApi } from '../../utils/hardwareApi';
 import PotCard from './PotCard';
 import PumpCard from './PumpCard';
 import BrewTimer from './BrewTimer';
@@ -8,18 +9,45 @@ import styles from './BrewingPanel.module.css';
 function BrewingPanel() {
   const [states, setStates] = useState(brewSystem.getAllStates());
 
+  // Read environment once on mount — avoids re-renders when localStorage changes
+  const isProduction = useRef(
+    localStorage.getItem('brewSystemEnvironment') === 'production'
+  ).current;
+
   useEffect(() => {
-    // Poll hardware state every 500ms
-    const interval = setInterval(() => {
-      setStates(brewSystem.getAllStates());
+    // Initialize GPIO pins on the Pi when in production mode
+    if (isProduction) {
+      hardwareApi.initialize();
+    }
+
+    // Poll state every 500ms
+    const interval = setInterval(async () => {
+      if (isProduction) {
+        // Get real temperatures from the Pi; keep mock state for UI state (regulation, sv, etc.)
+        const temps = await hardwareApi.getTemperatures();
+        if (temps) {
+          setStates((prev) => ({
+            ...prev,
+            pots: {
+              ...prev.pots,
+              BK:  { ...prev.pots.BK,  pv: temps.bk  },
+              MLT: { ...prev.pots.MLT, pv: temps.mlt },
+              HLT: { ...prev.pots.HLT, pv: temps.hlt },
+            },
+          }));
+        }
+      } else {
+        setStates(brewSystem.getAllStates());
+      }
     }, 500);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isProduction]);
 
   const handlePotUpdate = (potName, updates) => {
     if (updates.heaterOn !== undefined) {
       brewSystem.setPotHeater(potName, updates.heaterOn);
+      if (isProduction) hardwareApi.setPotPower(potName, updates.heaterOn);
     }
     if (updates.regulationEnabled !== undefined) {
       brewSystem.setPotRegulation(potName, updates.regulationEnabled);
@@ -29,19 +57,22 @@ function BrewingPanel() {
     }
     if (updates.efficiency !== undefined) {
       brewSystem.setPotEfficiency(potName, updates.efficiency);
+      if (isProduction) hardwareApi.setPotEfficiency(potName, updates.efficiency);
     }
-    // Force immediate update
+    // Force immediate update from mock (for UI state)
     setStates(brewSystem.getAllStates());
   };
 
   const handlePumpUpdate = (pumpName, updates) => {
     if (updates.on !== undefined) {
       brewSystem.setPump(pumpName, updates.on);
+      if (isProduction) hardwareApi.setPumpPower(pumpName, updates.on);
     }
     if (updates.speed !== undefined) {
       brewSystem.setPumpSpeed(pumpName, updates.speed);
+      if (isProduction) hardwareApi.setPumpSpeed(pumpName, updates.speed);
     }
-    // Force immediate update
+    // Force immediate update from mock (for UI state)
     setStates(brewSystem.getAllStates());
   };
 
