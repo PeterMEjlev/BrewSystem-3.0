@@ -8,10 +8,9 @@
 
 .header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
 }
 
 .title {
@@ -21,9 +20,31 @@
   margin: 0;
 }
 
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.slider {
+  flex: 1;
+  accent-color: #94a3b8;
+  cursor: pointer;
+  height: 6px;
+}
+
+.windowLabel {
+  color: #94a3b8;
+  font-size: 14px;
+  min-width: 100px;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .toggles {
   display: flex;
   gap: 12px;
+  justify-content: flex-end;
 }
 
 .toggleBtn {

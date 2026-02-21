@@ -1,7 +1,9 @@
+import asyncio
 import json
 import logging
 import os
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Any
 
@@ -11,6 +13,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import utils_rpi
+from session_logger import session_logger
 
 # Suppress high-frequency polling endpoints from the access log
 class _SuppressPollingFilter(logging.Filter):
@@ -22,7 +25,36 @@ class _SuppressPollingFilter(logging.Filter):
 
 logging.getLogger("uvicorn.access").addFilter(_SuppressPollingFilter())
 
-app = FastAPI(title="Brew System API")
+
+async def _temperature_log_loop():
+    """Background task: read all three sensors every 10 seconds and log them."""
+    while True:
+        await asyncio.sleep(10)
+        try:
+            config = read_config()
+            sensors = config["sensors"]["ds18b20"]
+            session_logger.log_reading(
+                bk=utils_rpi.read_ds18b20(sensors["bk"]),
+                mlt=utils_rpi.read_ds18b20(sensors["mlt"]),
+                hlt=utils_rpi.read_ds18b20(sensors["hlt"]),
+            )
+        except Exception as e:
+            logging.getLogger(__name__).error("Temp log error: %s", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    session_logger.start_new_session()
+    task = asyncio.create_task(_temperature_log_loop())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Brew System API", lifespan=lifespan)
 
 # Path to config file
 CONFIG_FILE = Path(__file__).parent.parent / "config.json"
@@ -120,8 +152,9 @@ def _pump_pin_map(pump: str, config: Dict[str, Any]):
 
 @app.post("/api/hardware/initialize")
 async def initialize_hardware() -> Dict[str, str]:
-    """Initialize all GPIO pins to LOW"""
+    """Initialize all GPIO pins to LOW and start a new temperature log session"""
     utils_rpi.initialize_gpio()
+    session_logger.start_new_session()
     return {"status": "ok"}
 
 

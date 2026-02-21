@@ -42,4 +42,10 @@ export const hardwareApi = {
     fetch('/api/hardware/temperature')
       .then((r) => r.json())
       .catch(() => null),
+
+  /** Fetch full session temperature history. Returns array of { timestamp, bk, mlt, hlt } or [] on error */
+  getTemperatureHistory: () =>
+    fetch('/api/temperature/history')
+      .then((r) => r.json())
+      .catch(() => []),
 };

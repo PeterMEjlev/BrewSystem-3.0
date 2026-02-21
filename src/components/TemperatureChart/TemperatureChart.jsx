@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { brewSystem } from '../../utils/mockHardware';
+import { hardwareApi } from '../../utils/hardwareApi';
 import styles from './TemperatureChart.module.css';
+
+const WINDOW_MAX = 120; // slider max = "Full session"
+
+const formatTime = (date) =>
+  date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
 function TemperatureChart() {
   const [data, setData] = useState([]);
@@ -10,27 +16,59 @@ function TemperatureChart() {
     MLT: true,
     HLT: true,
   });
+  const [windowMinutes, setWindowMinutes] = useState(WINDOW_MAX);
   const dataRef = useRef([]);
-  const maxDataPoints = 120; // 2 minutes at 1 second intervals
+  const isProduction = useRef(
+    localStorage.getItem('brewSystemEnvironment') === 'production'
+  ).current;
 
+  // Seed chart with full session history on mount (production only)
   useEffect(() => {
-    const interval = setInterval(() => {
-      const states = brewSystem.getAllStates();
-      const timestamp = new Date().toLocaleTimeString();
+    if (!isProduction) return;
+    hardwareApi.getTemperatureHistory().then((history) => {
+      if (!Array.isArray(history) || history.length === 0) return;
+      const seeded = history.map((row) => ({
+        ts: new Date(row.timestamp).getTime(),
+        time: formatTime(new Date(row.timestamp)),
+        BK: row.bk,
+        MLT: row.mlt,
+        HLT: row.hlt,
+      }));
+      dataRef.current = seeded;
+      setData([...seeded]);
+    });
+  }, [isProduction]);
+
+  // Live 10-second polling — matches log interval, appends new points, no cap
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      let bk, mlt, hlt;
+
+      if (isProduction) {
+        const temps = await hardwareApi.getTemperatures();
+        if (!temps) return;
+        ({ bk, mlt, hlt } = temps);
+      } else {
+        const states = brewSystem.getAllStates();
+        bk = states.pots.BK.pv;
+        mlt = states.pots.MLT.pv;
+        hlt = states.pots.HLT.pv;
+      }
 
       const newPoint = {
-        time: timestamp,
-        BK: states.pots.BK.pv,
-        MLT: states.pots.MLT.pv,
-        HLT: states.pots.HLT.pv,
+        ts: Date.now(),
+        time: formatTime(new Date()),
+        BK: bk,
+        MLT: mlt,
+        HLT: hlt,
       };
 
-      dataRef.current = [...dataRef.current, newPoint].slice(-maxDataPoints);
+      dataRef.current = [...dataRef.current, newPoint];
       setData([...dataRef.current]);
-    }, 1000);
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isProduction]);
 
   const toggleVisibility = (pot) => {
     setVisibility((prev) => ({
@@ -39,10 +77,36 @@ function TemperatureChart() {
     }));
   };
 
+  // Derive the visible slice from the full data based on selected window
+  const cutoff = Date.now() - windowMinutes * 60 * 1000;
+  const displayData = windowMinutes >= WINDOW_MAX
+    ? data
+    : data.filter((p) => p.ts >= cutoff);
+
+  const windowLabel = windowMinutes >= WINDOW_MAX
+    ? 'Full session'
+    : windowMinutes === 60
+    ? 'Last 1 hr'
+    : `Last ${windowMinutes} min`;
+
   return (
     <div className={styles.chartPanel}>
       <div className={styles.header}>
         <h2 className={styles.title}>Temperature Chart</h2>
+
+        <div className={styles.sliderRow}>
+          <input
+            type="range"
+            min={5}
+            max={WINDOW_MAX}
+            step={1}
+            value={windowMinutes}
+            onChange={(e) => setWindowMinutes(Number(e.target.value))}
+            className={styles.slider}
+          />
+          <span className={styles.windowLabel}>{windowLabel}</span>
+        </div>
+
         <div className={styles.toggles}>
           <button
             className={`${styles.toggleBtn} ${visibility.BK ? styles.bk : styles.off}`}
@@ -67,7 +131,7 @@ function TemperatureChart() {
 
       <div className={styles.chartContainer}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+          <LineChart data={displayData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis
               dataKey="time"
@@ -90,6 +154,7 @@ function TemperatureChart() {
               }}
               labelStyle={{ color: '#cbd5e1' }}
               itemStyle={{ color: '#f1f5f9' }}
+              formatter={(value, name) => [`${Number(value).toFixed(1)} °C`, name]}
             />
             <Legend wrapperStyle={{ color: '#cbd5e1' }} />
             {visibility.BK && <Line type="monotone" dataKey="BK" stroke="#ef4444" strokeWidth={2} dot={false} />}

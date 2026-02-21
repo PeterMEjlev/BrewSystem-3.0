@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Temperature session logs
+backend/session_logs/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
