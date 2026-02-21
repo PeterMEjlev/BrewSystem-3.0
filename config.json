@@ -1,0 +1,56 @@
+{
+  "gpio": {
+    "pot": {
+      "bk": 17,
+      "hlt": 18
+    },
+    "pump": {
+      "p1": 27,
+      "p2": 21
+    },
+    "pwm_heating": {
+      "bk": 12,
+      "hlt": 13
+    },
+    "pwm_pump": {
+      "p1": 5,
+      "p2": 6
+    }
+  },
+  "pwm": {
+    "frequency": 200,
+    "software_frequency": 200
+  },
+  "sensors": {
+    "ds18b20": {
+      "bk": "28-00000b80089a",
+      "mlt": "28-00000b81425c",
+      "hlt": "28-00000b80bee4",
+      "pin": 7
+    }
+  },
+  "app": {
+    "log_interval_seconds": 5,
+    "auto_efficiency": {
+      "enabled": true,
+      "steps": [
+        {
+          "threshold": 5.0,
+          "power": 100.0
+        },
+        {
+          "threshold": 2.0,
+          "power": 60.0
+        },
+        {
+          "threshold": 0.5,
+          "power": 30.0
+        },
+        {
+          "threshold": 0.0,
+          "power": 0.0
+        }
+      ]
+    }
+  }
+}

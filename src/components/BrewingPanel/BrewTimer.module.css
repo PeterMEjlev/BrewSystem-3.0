@@ -1,0 +1,56 @@
+.brewTimer {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.brewTimer:hover {
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.brewTimer:active {
+  transform: scale(0.98);
+}
+
+.brewTimer.running {
+  border-color: #10b981;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.brewTimer.paused {
+  border-color: transparent;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.timeDisplay {
+  font-size: 56px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: #f1f5f9;
+  letter-spacing: 4px;
+}
+
+.statusHint {
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  font-weight: 500;
+}

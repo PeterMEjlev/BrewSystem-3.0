@@ -1,0 +1,46 @@
+.brewingPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.potRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.timerRow {
+  display: flex;
+  justify-content: center;
+}
+
+.pumpRow {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1400px) {
+  .potRow {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  .pumpRow {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .potRow,
+  .pumpRow {
+    grid-template-columns: 1fr;
+  }
+}

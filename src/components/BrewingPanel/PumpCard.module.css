@@ -1,0 +1,120 @@
+.pumpCard {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  flex: 1;
+  min-width: 280px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.toggleBtn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 2px solid #475569;
+  background: transparent;
+  color: #94a3b8;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 60px;
+  touch-action: manipulation;
+}
+
+.toggleBtn:active {
+  transform: scale(0.95);
+}
+
+.toggleBtn.on {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.gearIcon {
+  width: 36px;
+  height: 36px;
+  animation: spin linear infinite;
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6));
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.controlLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.controlValue {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: #3b82f6;
+}
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 40px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100px;
+  height: 95px;
+  border-radius: 10%;
+  background: rgba(255, 255, 255, 0);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0);
+  border: 3px solid #0f172a00;
+}
+
+.slider::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  border: 3px solid #0f172a;
+}
