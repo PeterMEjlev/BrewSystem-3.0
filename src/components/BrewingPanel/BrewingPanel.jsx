@@ -6,13 +6,31 @@ import PumpCard from './PumpCard';
 import BrewTimer from './BrewTimer';
 import styles from './BrewingPanel.module.css';
 
+const DEFAULT_REG_CONFIG = {
+  enabled: true,
+  steps: [
+    { threshold: 5,   power: 100 },
+    { threshold: 2,   power: 60  },
+    { threshold: 0.5, power: 30  },
+    { threshold: 0,   power: 0   },
+  ],
+};
+
 function BrewingPanel() {
   const [states, setStates] = useState(brewSystem.getAllStates());
+  const [regulationConfig, setRegulationConfig] = useState(DEFAULT_REG_CONFIG);
 
   // Read environment once on mount — avoids re-renders when localStorage changes
   const isProduction = useRef(
     localStorage.getItem('brewSystemEnvironment') === 'production'
   ).current;
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((s) => { if (s?.app?.auto_efficiency) setRegulationConfig(s.app.auto_efficiency); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Initialize GPIO pins on the Pi when in production mode
@@ -84,18 +102,21 @@ function BrewingPanel() {
           name="BK"
           type="BK"
           potState={states.pots.BK}
+          regulationConfig={regulationConfig}
           onUpdate={(updates) => handlePotUpdate('BK', updates)}
         />
         <PotCard
           name="MLT"
           type="MLT"
           potState={states.pots.MLT}
+          regulationConfig={regulationConfig}
           onUpdate={() => {}}
         />
         <PotCard
           name="HLT"
           type="HLT"
           potState={states.pots.HLT}
+          regulationConfig={regulationConfig}
           onUpdate={(updates) => handlePotUpdate('HLT', updates)}
         />
       </div>

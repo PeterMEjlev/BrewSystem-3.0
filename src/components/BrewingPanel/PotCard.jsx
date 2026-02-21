@@ -2,7 +2,17 @@ import { useState, useEffect } from 'react';
 import { getTemperatureColor, getTemperatureGradient } from '../../utils/temperatureColor';
 import styles from './PotCard.module.css';
 
-function PotCard({ name, type, potState, onUpdate }) {
+const DEFAULT_REG_CONFIG = {
+  enabled: true,
+  steps: [
+    { threshold: 5,   power: 100 },
+    { threshold: 2,   power: 60  },
+    { threshold: 0.5, power: 30  },
+    { threshold: 0,   power: 0   },
+  ],
+};
+
+function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, onUpdate }) {
   const [localSV, setLocalSV] = useState(potState.sv || 75);
   const [localEfficiency, setLocalEfficiency] = useState(potState.efficiency || 0);
 
@@ -37,35 +47,19 @@ function PotCard({ name, type, potState, onUpdate }) {
 
   // Auto efficiency control when regulation is enabled
   useEffect(() => {
-    if (type !== 'MLT' && potState.regulationEnabled && potState.heaterOn) {
+    if (type !== 'MLT' && potState.regulationEnabled && potState.heaterOn && regulationConfig.enabled) {
       const diff = localSV - potState.pv;
-      if (diff > 5) {
-        // Far from target: full power
-        if (localEfficiency !== 100) {
-          setLocalEfficiency(100);
-          onUpdate({ efficiency: 100 });
-        }
-      } else if (diff > 2) {
-        // Close to target: medium power
-        if (localEfficiency !== 60) {
-          setLocalEfficiency(60);
-          onUpdate({ efficiency: 60 });
-        }
-      } else if (diff > 0.5) {
-        // Very close: low power
-        if (localEfficiency !== 30) {
-          setLocalEfficiency(30);
-          onUpdate({ efficiency: 30 });
-        }
-      } else {
-        // At or above target: off
-        if (localEfficiency !== 0) {
-          setLocalEfficiency(0);
-          onUpdate({ efficiency: 0 });
-        }
+      const steps = regulationConfig.steps;
+      let power = steps[steps.length - 1].power; // fallback (else case)
+      for (const step of steps.slice(0, -1)) {
+        if (diff > step.threshold) { power = step.power; break; }
+      }
+      if (localEfficiency !== power) {
+        setLocalEfficiency(power);
+        onUpdate({ efficiency: power });
       }
     }
-  }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type]);
+  }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig]);
 
   const pvColor = getTemperatureColor(potState.pv);
   const svColor = getTemperatureColor(localSV);

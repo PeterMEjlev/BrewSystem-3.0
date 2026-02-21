@@ -39,35 +39,44 @@ function TemperatureChart() {
     });
   }, [isProduction]);
 
-  // Live 10-second polling — matches log interval, appends new points, no cap
+  // Polling — interval is read from settings API on mount, defaults to 10s
   useEffect(() => {
-    const interval = setInterval(async () => {
-      let bk, mlt, hlt;
+    let interval;
 
-      if (isProduction) {
-        const temps = await hardwareApi.getTemperatures();
-        if (!temps) return;
-        ({ bk, mlt, hlt } = temps);
-      } else {
-        const states = brewSystem.getAllStates();
-        bk = states.pots.BK.pv;
-        mlt = states.pots.MLT.pv;
-        hlt = states.pots.HLT.pv;
-      }
+    const startPolling = (ms) => {
+      interval = setInterval(async () => {
+        let bk, mlt, hlt;
 
-      const newPoint = {
-        ts: Date.now(),
-        time: formatTime(new Date()),
-        BK: bk,
-        MLT: mlt,
-        HLT: hlt,
-      };
+        if (isProduction) {
+          const temps = await hardwareApi.getTemperatures();
+          if (!temps) return;
+          ({ bk, mlt, hlt } = temps);
+        } else {
+          const states = brewSystem.getAllStates();
+          bk = states.pots.BK.pv;
+          mlt = states.pots.MLT.pv;
+          hlt = states.pots.HLT.pv;
+        }
 
-      dataRef.current = [...dataRef.current, newPoint];
-      setData([...dataRef.current]);
-    }, 10000);
+        const newPoint = {
+          ts: Date.now(),
+          time: formatTime(new Date()),
+          BK: bk,
+          MLT: mlt,
+          HLT: hlt,
+        };
 
-    return () => clearInterval(interval);
+        dataRef.current = [...dataRef.current, newPoint];
+        setData([...dataRef.current]);
+      }, ms);
+    };
+
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((s) => startPolling((s?.app?.log_interval_seconds ?? 10) * 1000))
+      .catch(() => startPolling(10000));
+
+    return () => { if (interval) clearInterval(interval); };
   }, [isProduction]);
 
   const toggleVisibility = (pot) => {

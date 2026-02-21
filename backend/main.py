@@ -10,7 +10,7 @@ from typing import Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import utils_rpi
 from session_logger import session_logger
@@ -27,11 +27,12 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressPollingFilter())
 
 
 async def _temperature_log_loop():
-    """Background task: read all three sensors every 10 seconds and log them."""
+    """Background task: read all three sensors and log them at the configured interval."""
     while True:
-        await asyncio.sleep(10)
+        config = read_config()
+        interval = config.get("app", {}).get("log_interval_seconds", 10)
+        await asyncio.sleep(interval)
         try:
-            config = read_config()
             sensors = config["sensors"]["ds18b20"]
             session_logger.log_reading(
                 bk=utils_rpi.read_ds18b20(sensors["bk"]),
@@ -63,11 +64,32 @@ CONFIG_FILE = Path(__file__).parent.parent / "config.json"
 _pump_speeds: Dict[str, float] = {"P1": 0.0, "P2": 0.0}
 
 
+class AutoEfficiencyStep(BaseModel):
+    threshold: float
+    power: float
+
+
+class AutoEfficiencySettings(BaseModel):
+    enabled: bool = True
+    steps: list[AutoEfficiencyStep] = Field(default_factory=lambda: [
+        AutoEfficiencyStep(threshold=5,   power=100),
+        AutoEfficiencyStep(threshold=2,   power=60),
+        AutoEfficiencyStep(threshold=0.5, power=30),
+        AutoEfficiencyStep(threshold=0,   power=0),
+    ])
+
+
+class AppSettings(BaseModel):
+    log_interval_seconds: int = 10
+    auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
+
+
 class Settings(BaseModel):
     """Settings model matching the config.json structure"""
     gpio: Dict[str, Any]
     pwm: Dict[str, Any]
     sensors: Dict[str, Any]
+    app: AppSettings = Field(default_factory=AppSettings)
 
 
 def read_config() -> Dict[str, Any]:
