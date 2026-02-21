@@ -91,7 +91,14 @@ function BrewingPanel() {
       brewSystem.setPotEfficiency(potName, updates.efficiency);
       if (isProduction) hardwareApi.setPotEfficiency(potName, updates.efficiency);
     }
-    setStates(mergeWithRealPv);
+    if (isProduction) {
+      setStates((prev) => ({
+        ...prev,
+        pots: { ...prev.pots, [potName]: { ...prev.pots[potName], ...updates } },
+      }));
+    } else {
+      setStates(mergeWithRealPv);
+    }
   };
 
   const handlePumpUpdate = (pumpName, updates) => {
@@ -103,7 +110,14 @@ function BrewingPanel() {
       brewSystem.setPumpSpeed(pumpName, updates.speed);
       if (isProduction) hardwareApi.setPumpSpeed(pumpName, updates.speed);
     }
-    setStates(mergeWithRealPv);
+    if (isProduction) {
+      setStates((prev) => ({
+        ...prev,
+        pumps: { ...prev.pumps, [pumpName]: { ...prev.pumps[pumpName], ...updates } },
+      }));
+    } else {
+      setStates(mergeWithRealPv);
+    }
   };
 
   return (
