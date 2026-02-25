@@ -24,7 +24,7 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #0f172a;
+  background: var(--color-bg-primary, #0f172a);
   color: #f1f5f9;
 }
 
@@ -41,7 +41,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
 }
 
 ::-webkit-scrollbar-thumb {

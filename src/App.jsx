@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ThemeProvider } from './contexts/ThemeContext';
 import BottomNav from './components/BottomNav/BottomNav';
 import BrewingPanel from './components/BrewingPanel/BrewingPanel';
 import TemperatureChart from './components/TemperatureChart/TemperatureChart';
@@ -9,14 +10,16 @@ function App() {
   const [activePanel, setActivePanel] = useState('brewing');
 
   return (
-    <div className="app">
-      <main className="main-content">
-        {activePanel === 'brewing' && <BrewingPanel />}
-        {activePanel === 'chart' && <TemperatureChart />}
-        {activePanel === 'settings' && <Settings />}
-      </main>
-      <BottomNav activePanel={activePanel} onPanelChange={setActivePanel} />
-    </div>
+    <ThemeProvider>
+      <div className="app">
+        <main className="main-content">
+          {activePanel === 'brewing' && <BrewingPanel />}
+          {activePanel === 'chart' && <TemperatureChart />}
+          {activePanel === 'settings' && <Settings />}
+        </main>
+        <BottomNav activePanel={activePanel} onPanelChange={setActivePanel} />
+      </div>
+    </ThemeProvider>
   );
 }
 

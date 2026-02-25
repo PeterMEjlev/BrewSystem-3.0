@@ -5,7 +5,7 @@
 
   color-scheme: dark;
   color: #f1f5f9;
-  background-color: #0f172a;
+  background-color: var(--color-bg-primary, #0f172a);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -24,7 +24,7 @@ body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: #0f172a;
+  background: var(--color-bg-primary, #0f172a);
 }
 
 button {

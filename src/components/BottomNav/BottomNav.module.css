@@ -2,7 +2,7 @@
   display: flex;
   justify-content: space-around;
   align-items: center;
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
   border-top: 2px solid #334155;
   padding: 12px 0;
   box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.3);
@@ -29,8 +29,8 @@
 }
 
 .navBtn.active {
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+  color: var(--color-accent-blue, #3b82f6);
+  background: color-mix(in srgb, var(--color-accent-blue, #3b82f6) 10%, transparent);
 }
 
 .navBtn:hover:not(.active) {

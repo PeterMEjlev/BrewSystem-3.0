@@ -1,5 +1,5 @@
 .brewTimer {
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
   border-radius: 16px;
   padding: 24px;
   display: flex;
@@ -24,8 +24,8 @@
 }
 
 .brewTimer.running {
-  border-color: #10b981;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 0 20px rgba(16, 185, 129, 0.3);
+  border-color: var(--color-accent-green, #10b981);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 0 20px color-mix(in srgb, var(--color-accent-green, #10b981) 30%, transparent);
 }
 
 .brewTimer.paused {

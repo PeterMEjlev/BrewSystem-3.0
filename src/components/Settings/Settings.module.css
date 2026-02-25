@@ -74,7 +74,7 @@
 }
 
 .toggleInput:checked + .toggleSlider {
-  background: #3b82f6;
+  background: var(--color-accent-blue, #3b82f6);
 }
 
 .toggleInput:checked + .toggleSlider::before {
@@ -90,10 +90,10 @@
 
 .saveStatus {
   font-size: 14px;
-  color: #10b981;
+  color: var(--color-accent-green, #10b981);
   font-weight: 500;
   padding: 8px 16px;
-  background: rgba(16, 185, 129, 0.1);
+  background: color-mix(in srgb, var(--color-accent-green, #10b981) 10%, transparent);
   border-radius: 8px;
 }
 
@@ -109,7 +109,7 @@
 }
 
 .section {
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
@@ -167,7 +167,7 @@
 }
 
 .inputGroup input {
-  background: #0f172a;
+  background: var(--color-bg-primary, #0f172a);
   border: 2px solid #334155;
   border-radius: 8px;
   color: #f1f5f9;
@@ -179,8 +179,8 @@
 
 .inputGroup input:focus {
   outline: none;
-  border-color: #3b82f6;
-  background: #1e293b;
+  border-color: var(--color-accent-blue, #3b82f6);
+  background: var(--color-bg-secondary, #1e293b);
 }
 
 .inputGroup input:hover {
@@ -215,7 +215,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background: #0f172a;
+  background: var(--color-bg-primary, #0f172a);
   border-radius: 8px;
   transition: color 0.2s;
 }
@@ -234,7 +234,7 @@
 }
 
 .thresholdTable {
-  background: #0f172a;
+  background: var(--color-bg-primary, #0f172a);
   border-radius: 10px;
   padding: 12px 16px;
   margin-top: 8px;
@@ -252,7 +252,7 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 0 4px 4px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--color-bg-secondary, #1e293b);
 }
 
 .thresholdRow {
@@ -281,7 +281,7 @@
 }
 
 .thresholdInput {
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
   border: 2px solid #334155;
   border-radius: 6px;
   color: #f1f5f9;
@@ -294,7 +294,7 @@
 
 .thresholdInput:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--color-accent-blue, #3b82f6);
 }
 
 .thresholdInput:hover {
@@ -321,4 +321,67 @@
 .info strong {
   color: #f1f5f9;
   font-size: 16px;
+}
+
+.colorGroup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.colorGroup label {
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.colorPicker {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 60px;
+  height: 40px;
+  border: 2px solid #334155;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.colorPicker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.colorPicker::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+
+.colorPicker::-moz-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+
+.resetBtn {
+  margin-top: 16px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+  border: 2px solid #475569;
+  border-radius: 8px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.resetBtn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.resetBtn:active {
+  transform: scale(0.98);
 }

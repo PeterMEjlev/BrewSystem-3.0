@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
+import { useTheme } from '../../contexts/ThemeContext';
 import styles from './TemperatureChart.module.css';
 
 const WINDOW_MAX = 120; // slider max = "Full session"
@@ -10,6 +11,7 @@ const formatTime = (date) =>
   date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
 function TemperatureChart() {
+  const { theme } = useTheme();
   const [data, setData] = useState([]);
   const [visibility, setVisibility] = useState({
     BK: true,
@@ -157,7 +159,7 @@ function TemperatureChart() {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#1e293b',
+                backgroundColor: theme.bgSecondary,
                 border: '1px solid #475569',
                 borderRadius: '8px',
               }}
@@ -166,9 +168,9 @@ function TemperatureChart() {
               formatter={(value, name) => [`${Number(value).toFixed(1)} °C`, name]}
             />
             <Legend wrapperStyle={{ color: '#cbd5e1' }} />
-            {visibility.BK && <Line type="monotone" dataKey="BK" stroke="#ef4444" strokeWidth={2} dot={false} />}
-            {visibility.MLT && <Line type="monotone" dataKey="MLT" stroke="#10b981" strokeWidth={2} dot={false} />}
-            {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke="#3b82f6" strokeWidth={2} dot={false} />}
+            {visibility.BK && <Line type="monotone" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} />}
+            {visibility.MLT && <Line type="monotone" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} />}
+            {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} />}
           </LineChart>
         </ResponsiveContainer>
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getTemperatureColor, getTemperatureGradient } from '../../utils/temperatureColor';
+import { useTheme, hexToRgba } from '../../contexts/ThemeContext';
 import styles from './PotCard.module.css';
 
 const DEFAULT_REG_CONFIG = {
@@ -61,6 +62,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
     }
   }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig]);
 
+  const { theme } = useTheme();
   const pvColor = getTemperatureColor(potState.pv);
   const svColor = getTemperatureColor(localSV);
   const glowIntensity = type !== 'MLT' && potState.heaterOn ? localEfficiency / 100 : 0;
@@ -71,7 +73,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
       style={{
         boxShadow:
           glowIntensity > 0
-            ? `0 0 ${20 + glowIntensity * 30}px rgba(249, 115, 22, ${0.3 + glowIntensity * 0.4})`
+            ? `0 0 ${20 + glowIntensity * 30}px ${hexToRgba(theme.accentOrange, 0.3 + glowIntensity * 0.4)}`
             : '0 4px 6px rgba(0, 0, 0, 0.3)',
       }}
     >
@@ -134,7 +136,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
                 className={styles.slider}
                 style={{
                   background: `linear-gradient(to right,
-                  rgb(59, 130, 246) 0%,
+                  ${theme.accentBlue} 0%,
                   ${getTemperatureColor(localSV)} ${localSV}%,
                   #475569 ${localSV}%,
                   #475569 100%)`,
@@ -159,8 +161,8 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
               disabled={potState.regulationEnabled}
               style={{
                 background: `linear-gradient(to right,
-                  #f97316 0%,
-                  #f97316 ${localEfficiency}%,
+                  ${theme.accentOrange} 0%,
+                  ${theme.accentOrange} ${localEfficiency}%,
                   #475569 ${localEfficiency}%,
                   #475569 100%)`,
               }}

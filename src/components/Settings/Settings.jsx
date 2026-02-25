@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTheme } from '../../contexts/ThemeContext';
 import styles from './Settings.module.css';
 
 function Settings() {
+  const { theme, updateTheme, resetTheme } = useTheme();
   const panelRef = useRef(null);
   const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false });
 
@@ -43,6 +45,7 @@ function Settings() {
   const [expandedSections, setExpandedSections] = useState({
     programSettings: true,
     rpiHardware: false,
+    guiColors: false,
     potControl: true,
     pumpControl: true,
     heatingPWM: true,
@@ -121,6 +124,23 @@ function Settings() {
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const updateColor = (colorKey, value) => {
+    updateTheme(colorKey, value);
+    const newSettings = {
+      ...settings,
+      theme: { ...settings.theme, [colorKey]: value },
+    };
+    setSettings(newSettings);
+    saveSettings(newSettings);
+  };
+
+  const handleResetColors = () => {
+    resetTheme();
+    const newSettings = { ...settings, theme: {} };
+    setSettings(newSettings);
+    saveSettings(newSettings);
   };
 
   const toggleEnvironment = () => {
@@ -486,6 +506,103 @@ function Settings() {
               )}
             </div>
 
+          </div>
+        )}
+      </div>
+
+      {/* GUI Colors */}
+      <div className={styles.section}>
+        <h3
+          className={styles.sectionTitle}
+          onClick={() => toggleSection('guiColors')}
+        >
+          <span className={expandedSections.guiColors ? styles.expanded : styles.collapsed}>▼</span>
+          GUI Colors
+        </h3>
+        {expandedSections.guiColors && (
+          <div className={styles.sectionContent}>
+
+            <div className={styles.subsectionTitle}>Backgrounds</div>
+            <div className={styles.colorGroup}>
+              <label>Primary Background:</label>
+              <input
+                type="color"
+                value={theme.bgPrimary}
+                onChange={(e) => updateColor('bgPrimary', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Card Background:</label>
+              <input
+                type="color"
+                value={theme.bgSecondary}
+                onChange={(e) => updateColor('bgSecondary', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
+            <div className={styles.subsectionTitle}>Accent Colors</div>
+            <div className={styles.colorGroup}>
+              <label>Blue (Controls):</label>
+              <input
+                type="color"
+                value={theme.accentBlue}
+                onChange={(e) => updateColor('accentBlue', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Green (ON State):</label>
+              <input
+                type="color"
+                value={theme.accentGreen}
+                onChange={(e) => updateColor('accentGreen', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Orange (Heating):</label>
+              <input
+                type="color"
+                value={theme.accentOrange}
+                onChange={(e) => updateColor('accentOrange', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
+            <div className={styles.subsectionTitle}>Vessel / Chart Colors</div>
+            <div className={styles.colorGroup}>
+              <label>BK (Boil Kettle):</label>
+              <input
+                type="color"
+                value={theme.vesselBK}
+                onChange={(e) => updateColor('vesselBK', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>MLT (Mash Tun):</label>
+              <input
+                type="color"
+                value={theme.vesselMLT}
+                onChange={(e) => updateColor('vesselMLT', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>HLT (Hot Liquor):</label>
+              <input
+                type="color"
+                value={theme.vesselHLT}
+                onChange={(e) => updateColor('vesselHLT', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
+            <button className={styles.resetBtn} onClick={handleResetColors}>
+              Reset to Defaults
+            </button>
           </div>
         )}
       </div>

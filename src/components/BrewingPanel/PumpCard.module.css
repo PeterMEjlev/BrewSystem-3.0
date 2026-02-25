@@ -1,5 +1,5 @@
 .pumpCard {
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
   border-radius: 16px;
   padding: 24px;
   display: flex;
@@ -43,8 +43,8 @@
 }
 
 .toggleBtn.on {
-  background: #10b981;
-  border-color: #10b981;
+  background: var(--color-accent-green, #10b981);
+  border-color: var(--color-accent-green, #10b981);
   color: white;
 }
 
@@ -52,7 +52,7 @@
   width: 36px;
   height: 36px;
   animation: spin linear infinite;
-  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-accent-blue, #3b82f6) 60%, transparent));
   flex-shrink: 0;
 }
 
@@ -84,7 +84,7 @@
   font-size: 16px;
   font-weight: 700;
   font-family: 'Courier New', monospace;
-  color: #3b82f6;
+  color: var(--color-accent-blue, #3b82f6);
 }
 
 .slider {

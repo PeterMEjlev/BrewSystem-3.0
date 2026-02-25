@@ -90,6 +90,7 @@ class Settings(BaseModel):
     pwm: Dict[str, Any]
     sensors: Dict[str, Any]
     app: AppSettings = Field(default_factory=AppSettings)
+    theme: Dict[str, str] = Field(default_factory=dict)
 
 
 def read_config() -> Dict[str, Any]:

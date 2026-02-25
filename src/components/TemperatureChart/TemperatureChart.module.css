@@ -64,20 +64,20 @@
 }
 
 .toggleBtn.bk {
-  background: #ef4444;
-  border-color: #ef4444;
+  background: var(--color-vessel-bk, #ef4444);
+  border-color: var(--color-vessel-bk, #ef4444);
   color: white;
 }
 
 .toggleBtn.mlt {
-  background: #10b981;
-  border-color: #10b981;
+  background: var(--color-vessel-mlt, #10b981);
+  border-color: var(--color-vessel-mlt, #10b981);
   color: white;
 }
 
 .toggleBtn.hlt {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--color-vessel-hlt, #3b82f6);
+  border-color: var(--color-vessel-hlt, #3b82f6);
   color: white;
 }
 
@@ -89,7 +89,7 @@
 
 .chartContainer {
   flex: 1;
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);

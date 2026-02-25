@@ -1,5 +1,5 @@
 .potCard {
-  background: #1e293b;
+  background: var(--color-bg-secondary, #1e293b);
   border-radius: 16px;
   padding: 24px;
   display: flex;
@@ -51,14 +51,14 @@
 }
 
 .toggleBtn.on {
-  background: #10b981;
-  border-color: #10b981;
+  background: var(--color-accent-green, #10b981);
+  border-color: var(--color-accent-green, #10b981);
   color: white;
 }
 
 .regBtn.on {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--color-accent-blue, #3b82f6);
+  border-color: var(--color-accent-blue, #3b82f6);
 }
 
 .tempDisplay {
@@ -66,7 +66,7 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  background: #0f172a;
+  background: var(--color-bg-primary, #0f172a);
   border-radius: 12px;
 }
 
