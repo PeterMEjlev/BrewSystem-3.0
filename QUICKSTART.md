@@ -15,10 +15,13 @@ Open http://localhost:5173 in your browser. Hot reload is enabled.
 ## Kiosk Mode (PC - Electron Fullscreen)
 
 ```bash
-# Terminal 1: Start Vite dev server
+# Terminal 1: Start backend
+python backend/main.py
+
+# Terminal 2: Start Vite dev server
 npm run dev
 
-# Terminal 2: Launch Electron kiosk window
+# Terminal 3: Launch Electron kiosk window
 npm run electron:dev
 ```
 

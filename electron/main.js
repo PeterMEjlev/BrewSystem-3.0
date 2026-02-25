@@ -1,5 +1,6 @@
 const { app, BrowserWindow, globalShortcut } = require('electron');
 const http = require('http');
+const path = require('path');
 
 const isDev = process.env.NODE_ENV === 'development';
 const LOAD_URL = isDev ? 'http://localhost:5173' : 'http://localhost:8000';
@@ -31,6 +32,7 @@ function waitForBackend(url, retries = 30, delay = 1000) {
 
 async function createWindow() {
   const win = new BrowserWindow({
+    icon: path.join(__dirname, '..', 'Icon_Beer.png'),
     kiosk: true,
     fullscreen: true,
     frame: false,
