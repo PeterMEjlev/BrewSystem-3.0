@@ -147,18 +147,14 @@ function BrewingPanel() {
         />
       </div>
 
-      {/* Brew Timer */}
-      <div className={styles.timerRow}>
-        <BrewTimer />
-      </div>
-
-      {/* Pump Cards Row */}
+      {/* Pump Cards Row with Brew Timer in the middle */}
       <div className={styles.pumpRow}>
         <PumpCard
           name="Pump 1"
           pumpState={states.pumps.P1}
           onUpdate={(updates) => handlePumpUpdate('P1', updates)}
         />
+        <BrewTimer />
         <PumpCard
           name="Pump 2"
           pumpState={states.pumps.P2}
