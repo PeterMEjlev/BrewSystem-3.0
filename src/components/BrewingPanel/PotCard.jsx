@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getTemperatureColor, getTemperatureGradient } from '../../utils/temperatureColor';
-import { useTheme, hexToRgba } from '../../contexts/ThemeContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import styles from './PotCard.module.css';
 
 const DEFAULT_REG_CONFIG = {
@@ -98,12 +98,12 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
 
   return (
     <div
-      className={`${styles.potCard} ${type === 'MLT' ? styles.mlt : ''}`}
+      className={`${styles.potCard} ${type === 'MLT' ? styles.mlt : ''} ${glowIntensity > 0 ? styles.glowing : ''}`}
       style={{
-        boxShadow:
-          glowIntensity > 0
-            ? `0 0 ${20 + glowIntensity * 30}px ${hexToRgba(theme.accentOrange, 0.3 + glowIntensity * 0.6)}`
-            : '0 4px 6px rgba(0, 0, 0, 0.3)',
+        '--glow-opacity': glowIntensity > 0 ? 0.1 + glowIntensity * 0.8 : 0,
+        boxShadow: glowIntensity > 0
+          ? 'none'
+          : '0 4px 6px rgba(0, 0, 0, 0.3)',
       }}
     >
       <div className={styles.header}>
@@ -190,8 +190,8 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
               disabled={potState.regulationEnabled && regulationConfig.enabled}
               style={{
                 background: `linear-gradient(to right,
-                  ${theme.accentOrange} 0%,
-                  ${theme.accentOrange} ${localEfficiency}%,
+                  #f04c65 0%,
+                  #f58361 ${localEfficiency}%,
                   #475569 ${localEfficiency}%,
                   #475569 100%)`,
               }}
