@@ -43,8 +43,8 @@
 }
 
 .toggleBtn.on {
-  background: var(--color-accent-green, #10b981);
-  border-color: var(--color-accent-green, #10b981);
+  background: linear-gradient(135deg, #3a47d5, #00d2ff);
+  border-color: #3a47d5;
   color: white;
 }
 

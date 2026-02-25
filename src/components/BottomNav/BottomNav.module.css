@@ -2,10 +2,10 @@
   display: flex;
   justify-content: space-around;
   align-items: center;
-  background: var(--color-bg-secondary, #1e293b);
-  border-top: 2px solid #000000;
+  background: #1e293b;
+  border-top: 2px solid #33415500;
   padding: 12px 0;
-  box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .navBtn {
