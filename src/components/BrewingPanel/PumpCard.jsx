@@ -62,8 +62,8 @@ function PumpCard({ name, pumpState, onUpdate }) {
           className={styles.slider}
           style={{
             background: `linear-gradient(to right,
-              ${theme.accentBlue} 0%,
-              ${theme.accentBlue} ${localSpeed}%,
+              #3a47d5 0%,
+              #00d2ff ${localSpeed}%,
               #475569 ${localSpeed}%,
               #475569 100%)`,
           }}
