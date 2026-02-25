@@ -49,8 +49,9 @@
 }
 
 .gearIcon {
-  width: 36px;
-  height: 36px;
+  width: 56px;
+  height: 56px;
+  margin: -10px 0;
   animation: spin linear infinite;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-accent-blue, #3b82f6) 60%, transparent));
   flex-shrink: 0;
