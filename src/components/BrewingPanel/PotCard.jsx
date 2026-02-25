@@ -46,21 +46,50 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
     onUpdate({ efficiency: value });
   };
 
-  // Auto efficiency control when regulation is enabled
+  // Auto efficiency control when regulation and auto efficiency are enabled
   useEffect(() => {
-    if (type !== 'MLT' && potState.regulationEnabled && potState.heaterOn && regulationConfig.enabled) {
+    if (type !== 'MLT' && potState.regulationEnabled && regulationConfig.enabled) {
       const diff = localSV - potState.pv;
-      const steps = regulationConfig.steps;
-      let power = steps[steps.length - 1].power; // fallback (else case)
-      for (const step of steps.slice(0, -1)) {
-        if (diff > step.threshold) { power = step.power; break; }
-      }
-      if (localEfficiency !== power) {
-        setLocalEfficiency(power);
-        onUpdate({ efficiency: power });
+      if (diff <= 0) {
+        // At or above target – turn off heater
+        if (potState.heaterOn) {
+          onUpdate({ heaterOn: false });
+        }
+      } else {
+        // Below target – compute step power and ensure heater is on
+        const steps = regulationConfig.steps;
+        let power = steps[steps.length - 1].power;
+        for (const step of steps.slice(0, -1)) {
+          if (diff > step.threshold) { power = step.power; break; }
+        }
+        if (!potState.heaterOn) {
+          setLocalEfficiency(power);
+          onUpdate({ heaterOn: true, efficiency: power });
+        } else if (localEfficiency !== power) {
+          setLocalEfficiency(power);
+          onUpdate({ efficiency: power });
+        }
       }
     }
   }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig]);
+
+  // Manual efficiency control when regulation is enabled but auto efficiency is off
+  useEffect(() => {
+    if (type !== 'MLT' && potState.regulationEnabled && !regulationConfig.enabled) {
+      const diff = localSV - potState.pv;
+      if (diff <= 0) {
+        // At or above target – turn off heater
+        if (potState.heaterOn) {
+          onUpdate({ heaterOn: false });
+        }
+      } else {
+        // Below target – ensure heater is on
+        if (!potState.heaterOn) {
+          onUpdate({ heaterOn: true, efficiency: localEfficiency });
+        }
+      }
+    }
+  }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig, localEfficiency]);
 
   const { theme } = useTheme();
   const pvColor = getTemperatureColor(potState.pv);
@@ -158,7 +187,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
               value={localEfficiency}
               onChange={handleEfficiencyChange}
               className={styles.slider}
-              disabled={potState.regulationEnabled}
+              disabled={potState.regulationEnabled && regulationConfig.enabled}
               style={{
                 background: `linear-gradient(to right,
                   ${theme.accentOrange} 0%,
