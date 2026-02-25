@@ -25,7 +25,7 @@
   filter: blur(calc(8px + var(--glow-opacity, 0) * 20px));
   z-index: 0;
   transition: opacity 0.3s ease;
-  animation: glowRotate 4s linear infinite;
+  animation: glowRotate 4s linear infinite, glowPulse 5s ease-in-out infinite;
   animation-play-state: paused;
 }
 
@@ -56,6 +56,17 @@
   }
 }
 
+@keyframes glowPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: blur(calc(8px + var(--glow-opacity, 0) * 20px));
+  }
+  50% {
+    transform: scale(1.04);
+    filter: blur(calc(10px + var(--glow-opacity, 0) * 25px));
+  }
+}
+
 @property --glow-angle {
   syntax: "<angle>";
   initial-value: 220deg;
@@ -64,6 +75,7 @@
 
 .mlt {
   opacity: 0.95;
+  z-index: 1;
 }
 
 .header {
