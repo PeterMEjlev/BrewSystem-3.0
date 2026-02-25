@@ -24,7 +24,7 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-primary, #0f172a);
+  background: linear-gradient(145deg, #0f172a 0%, #0e1420 50%, #080c16 100%);
   color: #f1f5f9;
 }
 

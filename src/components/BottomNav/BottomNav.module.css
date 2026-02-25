@@ -3,7 +3,7 @@
   justify-content: space-around;
   align-items: center;
   background: var(--color-bg-secondary, #1e293b);
-  border-top: 2px solid #334155;
+  border-top: 2px solid #000000;
   padding: 12px 0;
   box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.3);
 }
@@ -15,7 +15,7 @@
   gap: 6px;
   background: none;
   border: none;
-  color: #64748b;
+  color: #7b8aa0;
   cursor: pointer;
   padding: 12px 24px;
   transition: all 0.2s;
@@ -29,8 +29,15 @@
 }
 
 .navBtn.active {
-  color: var(--color-accent-blue, #3b82f6);
-  background: color-mix(in srgb, var(--color-accent-blue, #3b82f6) 10%, transparent);
+  color: #f58361;
+  background: linear-gradient(135deg, rgba(240, 76, 101, 0.1), rgba(245, 131, 97, 0.1));
+}
+
+.navBtn.active .label {
+  background: linear-gradient(135deg, #f04c65, #f58361);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .navBtn:hover:not(.active) {
