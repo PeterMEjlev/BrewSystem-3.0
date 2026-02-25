@@ -83,7 +83,7 @@
 }
 
 .pvSection.mltTemp .pvValue {
-  font-size: 72px;
+  font-size: 100px;
 }
 
 .pvLabel,
@@ -140,8 +140,8 @@
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 100px;
-  height: 95px;
+  width: 5px;
+  height: 50px;
   border-radius: 10%;
   background: rgba(255, 255, 255, 0);
   cursor: pointer;
