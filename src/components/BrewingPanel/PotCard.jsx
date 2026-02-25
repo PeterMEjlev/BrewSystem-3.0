@@ -102,7 +102,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
       style={{
         boxShadow:
           glowIntensity > 0
-            ? `0 0 ${20 + glowIntensity * 30}px ${hexToRgba(theme.accentOrange, 0.3 + glowIntensity * 0.4)}`
+            ? `0 0 ${20 + glowIntensity * 30}px ${hexToRgba(theme.accentOrange, 0.3 + glowIntensity * 0.6)}`
             : '0 4px 6px rgba(0, 0, 0, 0.3)',
       }}
     >
