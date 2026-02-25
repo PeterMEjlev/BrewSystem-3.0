@@ -2,6 +2,13 @@
   padding: 24px;
   overflow-y: auto;
   height: 100%;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+}
+
+.settingsPanel:active {
+  cursor: grabbing;
 }
 
 .header {

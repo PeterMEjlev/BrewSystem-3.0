@@ -1,7 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './Settings.module.css';
 
 function Settings() {
+  const panelRef = useRef(null);
+  const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false });
+
+  const onPointerDown = useCallback((e) => {
+    // Don't initiate drag on interactive elements
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'TEXTAREA') return;
+
+    dragState.current = {
+      isDragging: true,
+      startY: e.clientY,
+      startScroll: panelRef.current.scrollTop,
+      moved: false,
+    };
+  }, []);
+
+  const onPointerMove = useCallback((e) => {
+    if (!dragState.current.isDragging) return;
+    const dy = e.clientY - dragState.current.startY;
+    if (Math.abs(dy) > 3) dragState.current.moved = true;
+    panelRef.current.scrollTop = dragState.current.startScroll - dy;
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    dragState.current.isDragging = false;
+  }, []);
+
+  const onClickCapture = useCallback((e) => {
+    // Suppress clicks that were actually drags
+    if (dragState.current.moved) {
+      e.stopPropagation();
+      dragState.current.moved = false;
+    }
+  }, []);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState('');
@@ -116,7 +150,14 @@ function Settings() {
   const steps = settings.app.auto_efficiency.steps;
 
   return (
-    <div className={styles.settingsPanel}>
+    <div
+      className={styles.settingsPanel}
+      ref={panelRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onClickCapture={onClickCapture}
+    >
       <div className={styles.header}>
         <h2 className={styles.title}>Settings</h2>
         <div className={styles.headerRight}>
