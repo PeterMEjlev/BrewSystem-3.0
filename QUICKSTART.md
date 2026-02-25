@@ -1,22 +1,44 @@
 # Brew System v3 - Quick Start Guide
 
-Terminal 1:
-python backend/main.py
-
-Terminal 2:
-npm run dev
-
-## Development (Desktop Browser)
+## Dev Mode (PC - Browser)
 
 ```bash
-# Install dependencies
-npm install
+# Terminal 1: Start backend
+python backend/main.py
 
-# Start development server
+# Terminal 2: Start Vite dev server
 npm run dev
 ```
 
-Open http://localhost:5173 in your browser.
+Open http://localhost:5173 in your browser. Hot reload is enabled.
+
+## Kiosk Mode (PC - Electron Fullscreen)
+
+```bash
+# Terminal 1: Start Vite dev server
+npm run dev
+
+# Terminal 2: Launch Electron kiosk window
+npm run electron:dev
+```
+
+Press **Ctrl+Shift+Q** to exit kiosk mode.
+
+## Kiosk Mode (Raspberry Pi)
+
+```bash
+# Terminal 1: Start backend (or use systemd service)
+python backend/main.py
+
+# Terminal 2: Launch Electron kiosk window
+npm run electron:start
+```
+
+For auto-start on boot, see the [Kiosk Setup](#kiosk-setup-on-raspberry-pi-one-time) section below.
+
+---
+
+## Development (Desktop Browser)
 
 The application includes:
 - **Mock hardware simulation** - Temperatures change dynamically
@@ -98,14 +120,22 @@ sudo cp -r ~/brew-system-v3/dist/* /var/www/html/
 sudo systemctl restart lighttpd
 ```
 
-## Kiosk Mode Setup (One-time)
+## Electron Kiosk Mode
 
-On Raspberry Pi:
+The app uses an Electron wrapper for fullscreen kiosk mode.
+
+### How to Use
+
+- **Dev mode** (with Vite hot reload): Start `npm run dev` in one terminal, then `npm run electron:dev` in another
+- **Production** (on Pi): Start the FastAPI backend, then `npm run electron:start`
+- **Exit kiosk**: Press **Ctrl+Shift+Q**
+
+### Kiosk Setup on Raspberry Pi (One-time)
 
 ```bash
-# Install Chromium
+# Install unclutter to hide mouse cursor
 sudo apt-get update
-sudo apt-get install chromium-browser unclutter
+sudo apt-get install unclutter
 
 # Create autostart file
 mkdir -p ~/.config/lxsession/LXDE-pi
@@ -119,7 +149,7 @@ Add these lines:
 @xset -dpms
 @xset s noblank
 @unclutter -idle 0.1 -root
-@chromium-browser --kiosk --disable-restore-session-state http://localhost/
+@/home/pi/brew-system-v3/node_modules/.bin/electron /home/pi/brew-system-v3
 ```
 
 Save and reboot:
