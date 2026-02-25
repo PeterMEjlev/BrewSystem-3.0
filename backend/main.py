@@ -34,11 +34,8 @@ async def _temperature_log_loop():
         await asyncio.sleep(interval)
         try:
             sensors = config["sensors"]["ds18b20"]
-            session_logger.log_reading(
-                bk=utils_rpi.read_ds18b20(sensors["bk"]),
-                mlt=utils_rpi.read_ds18b20(sensors["mlt"]),
-                hlt=utils_rpi.read_ds18b20(sensors["hlt"]),
-            )
+            temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
+            session_logger.log_reading(**temps)
         except Exception as e:
             logging.getLogger(__name__).error("Temp log error: %s", e)
 
@@ -253,11 +250,7 @@ async def get_temperatures() -> Dict[str, Any]:
     """Read all three DS18B20 temperature sensors"""
     config = read_config()
     sensors = config["sensors"]["ds18b20"]
-    return {
-        "bk":  utils_rpi.read_ds18b20(sensors["bk"]),
-        "mlt": utils_rpi.read_ds18b20(sensors["mlt"]),
-        "hlt": utils_rpi.read_ds18b20(sensors["hlt"]),
-    }
+    return await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
 
 
 # Serve React build

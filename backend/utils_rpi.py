@@ -149,6 +149,15 @@ def read_ds18b20(serial_code):
         return round(random.uniform(20.0, 30.0), 1)
 
 
+def read_all_temperatures(sensors: dict) -> dict:
+    """Read all three DS18B20 sensors. Blocking — call from a thread."""
+    return {
+        "bk":  read_ds18b20(sensors["bk"]),
+        "mlt": read_ds18b20(sensors["mlt"]),
+        "hlt": read_ds18b20(sensors["hlt"]),
+    }
+
+
 def initialize_gpio():
     config = load_config()
     gpio = config["gpio"]
