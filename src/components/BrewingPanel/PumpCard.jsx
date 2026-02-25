@@ -27,7 +27,7 @@ function PumpCard({ name, pumpState, onUpdate }) {
         {pumpState.on && (
           <svg
             className={styles.gearIcon}
-            style={{ animationDuration: `${Math.max(0.3, 3 - (localSpeed / 100) * 2.7)}s` }}
+            style={{ animationDuration: `${Math.max(0.3, 3 - (localSpeed / 100) * 2.7)}s`, animationPlayState: localSpeed === 0 ? 'paused' : 'running' }}
             viewBox="0 0 100 100"
             xmlns="http://www.w3.org/2000/svg"
           >
