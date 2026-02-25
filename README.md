@@ -157,23 +157,25 @@ sudo systemctl enable brew-system.service
 sudo systemctl start brew-system.service
 ```
 
-### 6. Set Up Kiosk Mode
+### 6. Set Up Kiosk Mode (Electron)
 
-Install Chromium and unclutter:
+Install unclutter to hide the mouse cursor:
 
 ```bash
-sudo apt-get install chromium-browser unclutter
+sudo apt-get install unclutter
 ```
 
-Create autostart script (`~/.config/lxsession/LXDE-pi/autostart`):
+Electron is installed as a project dependency. Create autostart script (`~/.config/lxsession/LXDE-pi/autostart`):
 
 ```bash
 @xset s off
 @xset -dpms
 @xset s noblank
 @unclutter -idle 0.1 -root
-@chromium-browser --kiosk --disable-restore-session-state http://localhost:8000/
+@/home/pi/brew-system-v3/node_modules/.bin/electron /home/pi/brew-system-v3
 ```
+
+Press **Ctrl+Shift+Q** to exit kiosk mode for maintenance.
 
 ### 7. Enable Auto-login (Optional)
 

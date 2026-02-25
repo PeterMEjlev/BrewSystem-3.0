@@ -5,7 +5,6 @@
 PI_HOST=${1:-raspberrypi.local}
 PI_USER=pi
 REMOTE_DIR=/home/pi/brew-system-v3
-WEB_DIR=/var/www/html
 
 echo "🍺 Brew System v3 - Raspberry Pi Deployment Script"
 echo "=================================================="
@@ -37,7 +36,7 @@ echo ""
 
 # Copy files to Pi
 echo "📤 Transferring files to Raspberry Pi..."
-scp -r dist/ $PI_USER@$PI_HOST:$REMOTE_DIR/
+scp -r dist/ electron/ package.json $PI_USER@$PI_HOST:$REMOTE_DIR/
 
 if [ $? -ne 0 ]; then
     echo "❌ File transfer failed!"
@@ -47,18 +46,19 @@ fi
 echo "✅ Files transferred successfully"
 echo ""
 
-# Install to web directory
-echo "🔧 Installing to web directory..."
+# Install Electron on Pi and restart services
+echo "🔧 Installing Electron and restarting services..."
 ssh $PI_USER@$PI_HOST << EOF
-    sudo cp -r $REMOTE_DIR/dist/* $WEB_DIR/
-    sudo systemctl restart lighttpd
+    cd $REMOTE_DIR
+    npm install electron --save-dev
+    sudo systemctl restart brew-system.service
 EOF
 
 if [ $? -ne 0 ]; then
-    echo "⚠️  Installation to web directory failed. You may need to do this manually:"
+    echo "⚠️  Remote setup failed. You may need to do this manually:"
     echo "   ssh $PI_USER@$PI_HOST"
-    echo "   sudo cp -r $REMOTE_DIR/dist/* $WEB_DIR/"
-    echo "   sudo systemctl restart lighttpd"
+    echo "   cd $REMOTE_DIR && npm install electron --save-dev"
+    echo "   sudo systemctl restart brew-system.service"
     exit 1
 fi
 
@@ -66,5 +66,6 @@ echo "✅ Installation completed"
 echo ""
 echo "🎉 Deployment complete!"
 echo ""
-echo "📱 Access your brewery system at: http://$PI_HOST/"
+echo "📱 Electron kiosk will launch on next boot, or run manually:"
+echo "   ssh $PI_USER@$PI_HOST 'cd $REMOTE_DIR && npx electron .'"
 echo ""
