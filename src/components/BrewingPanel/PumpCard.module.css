@@ -8,6 +8,8 @@
   box-shadow: var(--shadow-card);
   flex: 1;
   min-width: 280px;
+  position: relative;
+  z-index: 1;
 }
 
 .header {
