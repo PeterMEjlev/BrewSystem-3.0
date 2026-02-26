@@ -9,6 +9,19 @@ export const DEFAULT_THEME = {
   vesselBK: '#ef4444',
   vesselMLT: '#10b981',
   vesselHLT: '#3b82f6',
+  textPrimary: '#f1f5f9',
+  textSecondary: '#cbd5e1',
+  textMuted: '#94a3b8',
+  textDark: '#64748b',
+  border: '#334155',
+  borderLight: '#475569',
+  gradientWarmStart: '#f04c65',
+  gradientWarmEnd: '#f58361',
+  gradientCoolStart: '#3a47d5',
+  gradientCoolEnd: '#00d2ff',
+  navInactive: '#7b8aa0',
+  tempCold: '#3b82f6',
+  tempHot: '#ef4444',
 };
 
 // Maps theme keys to CSS custom property names
@@ -21,6 +34,19 @@ const CSS_VAR_MAP = {
   vesselBK: '--color-vessel-bk',
   vesselMLT: '--color-vessel-mlt',
   vesselHLT: '--color-vessel-hlt',
+  textPrimary: '--color-text-primary',
+  textSecondary: '--color-text-secondary',
+  textMuted: '--color-text-muted',
+  textDark: '--color-text-dark',
+  border: '--color-border',
+  borderLight: '--color-border-light',
+  gradientWarmStart: '--color-gradient-warm-start',
+  gradientWarmEnd: '--color-gradient-warm-end',
+  gradientCoolStart: '--color-gradient-cool-start',
+  gradientCoolEnd: '--color-gradient-cool-end',
+  navInactive: '--color-nav-inactive',
+  tempCold: '--color-temp-cold',
+  tempHot: '--color-temp-hot',
 };
 
 const ThemeContext = createContext({

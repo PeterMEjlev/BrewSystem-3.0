@@ -2,10 +2,10 @@
   display: flex;
   justify-content: space-around;
   align-items: center;
-  background: #1e293b;
+  background: var(--color-bg-secondary);
   border-top: 2px solid #33415500;
   padding: 12px 0;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-nav);
 }
 
 .navBtn {
@@ -15,11 +15,11 @@
   gap: 6px;
   background: none;
   border: none;
-  color: #7b8aa0;
+  color: var(--color-nav-inactive);
   cursor: pointer;
   padding: 12px 24px;
-  transition: all 0.2s;
-  border-radius: 8px;
+  transition: var(--transition-fast);
+  border-radius: var(--radius-md);
   min-width: 100px;
   touch-action: manipulation;
 }
@@ -29,19 +29,19 @@
 }
 
 .navBtn.active {
-  color: #f58361;
+  color: var(--color-gradient-warm-end);
   background: linear-gradient(135deg, rgba(240, 76, 101, 0.1), rgba(245, 131, 97, 0.1));
 }
 
 .navBtn.active .label {
-  background: linear-gradient(135deg, #f04c65, #f58361);
+  background: var(--gradient-warm);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .navBtn:hover:not(.active) {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   background: rgba(100, 116, 139, 0.1);
 }
 
@@ -51,8 +51,8 @@
 }
 
 .label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

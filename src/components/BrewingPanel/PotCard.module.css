@@ -1,5 +1,5 @@
 .potCard {
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -17,9 +17,9 @@
   border-radius: 18px;
   background: conic-gradient(
     from var(--glow-angle, 220deg),
-    #f04c65,
-    #f58361,
-    #f04c65
+    var(--color-gradient-warm-start),
+    var(--color-gradient-warm-end),
+    var(--color-gradient-warm-start)
   );
   opacity: var(--glow-opacity, 0);
   filter: blur(calc(8px + var(--glow-opacity, 0) * 20px));
@@ -33,8 +33,8 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 16px;
-  background: var(--color-bg-secondary, #1e293b);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-secondary);
   z-index: 1;
 }
 
@@ -85,9 +85,9 @@
 }
 
 .title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -98,14 +98,14 @@
 
 .toggleBtn {
   padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  border: 2px solid #475569;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  border: 2px solid var(--color-border-light);
   background: transparent;
-  color: #94a3b8;
-  border-radius: 8px;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
   min-width: 60px;
   touch-action: manipulation;
 }
@@ -115,14 +115,14 @@
 }
 
 .toggleBtn.on {
-  background: linear-gradient(135deg, #f04c65, #f58361);
+  background: var(--gradient-warm);
   border-color: transparent;
   color: white;
 }
 
 .regBtn.on {
-  background: var(--color-accent-blue, #3b82f6);
-  border-color: var(--color-accent-blue, #3b82f6);
+  background: var(--color-accent-blue);
+  border-color: var(--color-accent-blue);
 }
 
 .tempDisplay {
@@ -130,8 +130,8 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  background: var(--color-bg-primary, #0f172a);
-  border-radius: 12px;
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-lg);
 }
 
 .pvSection,
@@ -147,27 +147,27 @@
 }
 
 .pvSection.mltTemp .pvValue {
-  font-size: 100px;
+  font-size: var(--font-size-5xl);
 }
 
 .pvLabel,
 .svLabel {
-  font-size: 14px;
-  color: #64748b;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-dark);
+  font-weight: var(--font-weight-semibold);
 }
 
 .pvValue {
-  font-size: 48px;
-  font-weight: 700;
-  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
   letter-spacing: 1px;
 }
 
 .svValue {
-  font-size: 24px;
-  font-weight: 600;
-  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
 }
 
 .control {
@@ -180,22 +180,22 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: #cbd5e1;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
 }
 
 .controlValue {
-  font-size: 16px;
-  font-weight: 700;
-  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
 }
 
 .slider {
   -webkit-appearance: none;
   appearance: none;
-  height: 40px;
-  border-radius: 8px;
+  height: var(--slider-height);
+  border-radius: var(--radius-md);
   outline: none;
   cursor: pointer;
   touch-action: none;
@@ -220,7 +220,7 @@
   background: white;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  border: 3px solid #0f172a;
+  border: 3px solid var(--color-bg-primary);
 }
 
 .slider:disabled {

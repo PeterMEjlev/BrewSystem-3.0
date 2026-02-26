@@ -103,7 +103,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
         '--glow-opacity': glowIntensity > 0 ? 0.1 + glowIntensity * 0.8 : 0,
         boxShadow: glowIntensity > 0
           ? 'none'
-          : '0 4px 6px rgba(0, 0, 0, 0.3)',
+          : 'var(--shadow-card)',
       }}
     >
       <div className={styles.header}>
@@ -167,8 +167,8 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
                   background: `linear-gradient(to right,
                   ${theme.accentBlue} 0%,
                   ${getTemperatureColor(localSV)} ${localSV}%,
-                  #475569 ${localSV}%,
-                  #475569 100%)`,
+                  var(--color-border-light) ${localSV}%,
+                  var(--color-border-light) 100%)`,
                 }}
               />
             </div>
@@ -190,10 +190,10 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
               disabled={potState.regulationEnabled && regulationConfig.enabled}
               style={{
                 background: `linear-gradient(to right,
-                  #f04c65 0%,
-                  #f58361 ${localEfficiency}%,
-                  #475569 ${localEfficiency}%,
-                  #475569 100%)`,
+                  var(--color-gradient-warm-start) 0%,
+                  var(--color-gradient-warm-end) ${localEfficiency}%,
+                  var(--color-border-light) ${localEfficiency}%,
+                  var(--color-border-light) 100%)`,
               }}
             />
           </div>

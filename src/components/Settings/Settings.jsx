@@ -600,6 +600,127 @@ function Settings() {
               />
             </div>
 
+            <div className={styles.subsectionTitle}>Text Colors</div>
+            <div className={styles.colorGroup}>
+              <label>Primary Text:</label>
+              <input
+                type="color"
+                value={theme.textPrimary}
+                onChange={(e) => updateColor('textPrimary', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Secondary Text:</label>
+              <input
+                type="color"
+                value={theme.textSecondary}
+                onChange={(e) => updateColor('textSecondary', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Muted Text:</label>
+              <input
+                type="color"
+                value={theme.textMuted}
+                onChange={(e) => updateColor('textMuted', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Dark Text:</label>
+              <input
+                type="color"
+                value={theme.textDark}
+                onChange={(e) => updateColor('textDark', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
+            <div className={styles.subsectionTitle}>Border Colors</div>
+            <div className={styles.colorGroup}>
+              <label>Border:</label>
+              <input
+                type="color"
+                value={theme.border}
+                onChange={(e) => updateColor('border', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Border Light:</label>
+              <input
+                type="color"
+                value={theme.borderLight}
+                onChange={(e) => updateColor('borderLight', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
+            <div className={styles.subsectionTitle}>Gradient Colors</div>
+            <div className={styles.gradientPair}>
+              <label>Warm:</label>
+              <input
+                type="color"
+                value={theme.gradientWarmStart}
+                onChange={(e) => updateColor('gradientWarmStart', e.target.value)}
+                className={styles.colorPicker}
+              />
+              <input
+                type="color"
+                value={theme.gradientWarmEnd}
+                onChange={(e) => updateColor('gradientWarmEnd', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.gradientPair}>
+              <label>Cool:</label>
+              <input
+                type="color"
+                value={theme.gradientCoolStart}
+                onChange={(e) => updateColor('gradientCoolStart', e.target.value)}
+                className={styles.colorPicker}
+              />
+              <input
+                type="color"
+                value={theme.gradientCoolEnd}
+                onChange={(e) => updateColor('gradientCoolEnd', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
+            <div className={styles.subsectionTitle}>Navigation</div>
+            <div className={styles.colorGroup}>
+              <label>Nav Inactive:</label>
+              <input
+                type="color"
+                value={theme.navInactive}
+                onChange={(e) => updateColor('navInactive', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
+            <div className={styles.subsectionTitle}>Temperature</div>
+            <div className={styles.colorGroup}>
+              <label>Cold / Blue:</label>
+              <input
+                type="color"
+                value={theme.tempCold}
+                onChange={(e) => updateColor('tempCold', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
+              <label>Hot / Red:</label>
+              <input
+                type="color"
+                value={theme.tempHot}
+                onChange={(e) => updateColor('tempHot', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+
             <button className={styles.resetBtn} onClick={handleResetColors}>
               Reset to Defaults
             </button>

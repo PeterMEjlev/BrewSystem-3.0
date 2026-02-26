@@ -1,11 +1,11 @@
 .pumpCard {
-  background: var(--color-bg-secondary, #1e293b);
-  border-radius: 16px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl);
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-card);
   flex: 1;
   min-width: 280px;
 }
@@ -18,22 +18,22 @@
 }
 
 .title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
   margin: 0;
 }
 
 .toggleBtn {
   padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  border: 2px solid #475569;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  border: 2px solid var(--color-border-light);
   background: transparent;
-  color: #94a3b8;
-  border-radius: 8px;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
   min-width: 60px;
   touch-action: manipulation;
 }
@@ -43,8 +43,8 @@
 }
 
 .toggleBtn.on {
-  background: linear-gradient(135deg, #3a47d5, #00d2ff);
-  border-color: #3a47d5;
+  background: var(--gradient-cool);
+  border-color: var(--color-gradient-cool-start);
   color: white;
 }
 
@@ -53,7 +53,7 @@
   height: 56px;
   margin: -10px 0;
   animation: spin linear infinite;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-accent-blue, #3b82f6) 60%, transparent));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-accent-blue) 60%, transparent));
   flex-shrink: 0;
 }
 
@@ -76,23 +76,23 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: #cbd5e1;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
 }
 
 .controlValue {
-  font-size: 16px;
-  font-weight: 700;
-  font-family: 'Courier New', monospace;
-  color: var(--color-accent-blue, #3b82f6);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
+  color: var(--color-accent-blue);
 }
 
 .slider {
   -webkit-appearance: none;
   appearance: none;
-  height: 40px;
-  border-radius: 8px;
+  height: var(--slider-height);
+  border-radius: var(--radius-md);
   outline: none;
   cursor: pointer;
   touch-action: none;
@@ -117,5 +117,5 @@
   background: white;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  border: 3px solid #0f172a;
+  border: 3px solid var(--color-bg-primary);
 }

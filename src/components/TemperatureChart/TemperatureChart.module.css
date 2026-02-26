@@ -14,9 +14,9 @@
 }
 
 .title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -28,14 +28,14 @@
 
 .slider {
   flex: 1;
-  accent-color: #94a3b8;
+  accent-color: var(--color-text-muted);
   cursor: pointer;
   height: 6px;
 }
 
 .windowLabel {
-  color: #94a3b8;
-  font-size: 14px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
   min-width: 100px;
   text-align: right;
   white-space: nowrap;
@@ -49,12 +49,12 @@
 
 .toggleBtn {
   padding: 12px 24px;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   border: 2px solid;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
   min-width: 80px;
   touch-action: manipulation;
 }
@@ -64,34 +64,34 @@
 }
 
 .toggleBtn.bk {
-  background: var(--color-vessel-bk, #ef4444);
-  border-color: var(--color-vessel-bk, #ef4444);
+  background: var(--color-vessel-bk);
+  border-color: var(--color-vessel-bk);
   color: white;
 }
 
 .toggleBtn.mlt {
-  background: var(--color-vessel-mlt, #10b981);
-  border-color: var(--color-vessel-mlt, #10b981);
+  background: var(--color-vessel-mlt);
+  border-color: var(--color-vessel-mlt);
   color: white;
 }
 
 .toggleBtn.hlt {
-  background: var(--color-vessel-hlt, #3b82f6);
-  border-color: var(--color-vessel-hlt, #3b82f6);
+  background: var(--color-vessel-hlt);
+  border-color: var(--color-vessel-hlt);
   color: white;
 }
 
 .toggleBtn.off {
   background: transparent;
-  border-color: #475569;
-  color: #64748b;
+  border-color: var(--color-border-light);
+  color: var(--color-text-dark);
 }
 
 .chartContainer {
   flex: 1;
-  background: var(--color-bg-secondary, #1e293b);
-  border-radius: 16px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-card);
   min-height: 400px;
 }
