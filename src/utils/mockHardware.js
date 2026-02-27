@@ -9,18 +9,18 @@ class MockBrewSystem {
     // Pot states
     this.pots = {
       BK: {
-        pv: 22.0, // Process Value (current temp)
-        sv: 75.0, // Set Value (target temp)
+        pv: 95.0, // Process Value (current temp)
+        sv: 100.0, // Set Value (target temp)
         heaterOn: false,
         regulationEnabled: false,
         efficiency: 0,
       },
       MLT: {
-        pv: 21.5, // Only PV for MLT
+        pv: 67.0, // Only PV for MLT
       },
       HLT: {
-        pv: 23.0,
-        sv: 80.0,
+        pv: 50.0,
+        sv: 55.0,
         heaterOn: false,
         regulationEnabled: false,
         efficiency: 0,
@@ -40,10 +40,18 @@ class MockBrewSystem {
     };
 
     // Simulation parameters
-    this.ambientTemp = 22.0;
+    this.ambientTemp = { BK: 95.0, MLT: 67.0, HLT: 50.0 };
     this.heatingRate = 0.15; // °C per second at 100% efficiency
-    this.coolingRate = 0.02; // °C per second
-    this.tempNoise = 0.1; // Random fluctuation
+    this.coolingRate = 0.005; // °C per second (gentle pull toward ambient)
+    this.tempNoise = 0.3; // Random fluctuation per tick
+
+    // Slow drift parameters — overlapping sine waves create natural-looking wander
+    this.drift = {
+      BK:  { amp: 4, period: 120, phase: Math.random() * Math.PI * 2 },
+      MLT: { amp: 6, period: 90,  phase: Math.random() * Math.PI * 2 },
+      HLT: { amp: 8, period: 150, phase: Math.random() * Math.PI * 2 },
+    };
+    this.tickCount = 0;
 
     // Start simulation loop
     this.startSimulation();
@@ -56,11 +64,9 @@ class MockBrewSystem {
   }
 
   updateTemperatures() {
-    // Update BK
+    this.tickCount++;
     this.simulatePotTemperature('BK');
-    // Update HLT
     this.simulatePotTemperature('HLT');
-    // Update MLT (passive cooling only)
     this.simulatePotTemperature('MLT');
   }
 
@@ -74,11 +80,16 @@ class MockBrewSystem {
       tempChange += this.heatingRate * efficiencyFactor;
     }
 
-    // Cooling toward ambient
-    const tempDiff = pot.pv - this.ambientTemp;
+    // Slow sinusoidal drift — makes the target wander within the band
+    const d = this.drift[potName];
+    const ambient = this.ambientTemp[potName] ?? 22.0;
+    const driftTarget = ambient + d.amp * Math.sin((this.tickCount / d.period) * Math.PI * 2 + d.phase);
+
+    // Pull toward the drifting target
+    const tempDiff = pot.pv - driftTarget;
     tempChange -= tempDiff * this.coolingRate;
 
-    // Add noise
+    // Add per-tick noise
     tempChange += (Math.random() - 0.5) * this.tempNoise;
 
     // Update temperature
