@@ -89,9 +89,42 @@
 
 .chartContainer {
   flex: 1;
+  position: relative;
   background: var(--color-bg-secondary);
   border-radius: var(--radius-xl);
   padding: 24px;
   box-shadow: var(--shadow-card);
   min-height: 400px;
+  touch-action: none;
+  user-select: none;
+}
+
+.chartContainer.zoomed {
+  cursor: grab;
+}
+
+.chartContainer.panning {
+  cursor: grabbing;
+}
+
+.resetZoom {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  padding: 6px 14px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary, #334155);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  opacity: 0.85;
+}
+
+.resetZoom:hover {
+  opacity: 1;
+  background: var(--color-bg-secondary);
 }
