@@ -429,6 +429,7 @@ function TemperatureChart() {
               }}
               labelStyle={{ color: '#cbd5e1' }}
               itemStyle={{ color: '#f1f5f9' }}
+              labelFormatter={(ts) => formatTime(new Date(ts))}
               formatter={(value, name) => [`${Number(value).toFixed(1)} °C`, name]}
             />
             <Legend wrapperStyle={{ color: '#cbd5e1' }} />
