@@ -4,9 +4,11 @@ import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
 import { useTheme } from '../../contexts/ThemeContext';
 import styles from './TemperatureChart.module.css';
+import { lttbDownsample } from '../../utils/downsample';
 
 const WINDOW_MAX = 120; // slider max = "Full session"
 const MIN_ZOOM_MS = 30000; // minimum zoom range: 30 seconds
+const MAX_PERSISTED_POINTS = 8640; // 24h at 10s intervals
 
 const formatTime = (date) =>
   date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -39,6 +41,9 @@ function startGlobalPolling() {
         MLT: row.mlt,
         HLT: row.hlt,
       }));
+      if (persistedData.length > MAX_PERSISTED_POINTS) {
+        persistedData = persistedData.slice(persistedData.length - MAX_PERSISTED_POINTS);
+      }
       notifySubscribers();
     });
   }
@@ -64,6 +69,9 @@ function startGlobalPolling() {
       MLT: mlt,
       HLT: hlt,
     }];
+    if (persistedData.length > MAX_PERSISTED_POINTS) {
+      persistedData = persistedData.slice(persistedData.length - MAX_PERSISTED_POINTS);
+    }
     notifySubscribers();
   };
 
@@ -92,6 +100,7 @@ function TemperatureChart() {
   const [windowMinutes, setWindowMinutes] = useState(WINDOW_MAX);
   const [zoomDomain, setZoomDomain] = useState(null); // { start, end } timestamps or null
   const [isPanning, setIsPanning] = useState(false);
+  const [maxChartPoints, setMaxChartPoints] = useState(500);
   const chartContainerRef = useRef(null);
   const panRef = useRef(null); // { startX, domainStart, domainEnd }
   const touchRef = useRef(null); // { distance, centerX, domainStart, domainEnd }
@@ -104,6 +113,14 @@ function TemperatureChart() {
     // Sync with any data collected while unmounted
     setData([...persistedData]);
     return () => { subscribers.delete(handler); };
+  }, []);
+
+  // Fetch max chart points from settings on every mount so changes take effect immediately
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((s) => setMaxChartPoints(s?.app?.max_chart_points ?? 500))
+      .catch(() => {});
   }, []);
 
   // Reset zoom when slider changes
@@ -123,10 +140,11 @@ function TemperatureChart() {
     ? data
     : data.filter((p) => p.ts >= cutoff);
 
-  // Apply zoom filter on top of slider window
-  const displayData = zoomDomain
+  // Apply zoom filter on top of slider window, then downsample for rendering
+  const displayDataRaw = zoomDomain
     ? windowData.filter((p) => p.ts >= zoomDomain.start && p.ts <= zoomDomain.end)
     : windowData;
+  const displayData = lttbDownsample(displayDataRaw, maxChartPoints);
 
   // Helper: get full time bounds of the slider window
   const getWindowBounds = useCallback(() => {

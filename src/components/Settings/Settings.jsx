@@ -252,6 +252,18 @@ function Settings() {
               />
             </div>
 
+            {/* Max chart points */}
+            <div className={styles.inputGroup}>
+              <label>Max Chart Points:</label>
+              <input
+                type="number"
+                min="50"
+                step="50"
+                value={settings.app.max_chart_points ?? 500}
+                onChange={(e) => updateSetting('app.max_chart_points', parseInt(e.target.value))}
+              />
+            </div>
+
             {/* Auto efficiency control */}
             <div className={styles.subsectionTitle}>Auto Efficiency Control</div>
 

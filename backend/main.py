@@ -10,7 +10,7 @@ from typing import Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 import utils_rpi
 from session_logger import session_logger
@@ -78,8 +78,11 @@ class AutoEfficiencySettings(BaseModel):
 
 
 class AppSettings(BaseModel):
+    model_config = ConfigDict(extra='allow')
+
     log_interval_seconds: int = 10
     max_watts: int = 11000
+    max_chart_points: int = 500
     auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
 
 
