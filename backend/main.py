@@ -56,6 +56,7 @@ app = FastAPI(title="Brew System API", lifespan=lifespan)
 
 # Path to config file
 CONFIG_FILE = Path(__file__).parent.parent / "config.json"
+DEFAULT_CONFIG_FILE = Path(__file__).parent.parent / "config.default.json"
 
 # Track last known pump speed so we can restore it when toggling power
 _pump_speeds: Dict[str, float] = {"P1": 0.0, "P2": 0.0}
@@ -126,6 +127,20 @@ async def get_settings() -> Settings:
     """Get current settings"""
     config = read_config()
     return Settings(**config)
+
+
+@app.post("/api/settings/reset")
+async def reset_settings() -> Settings:
+    """Reset settings to factory defaults from config.default.json"""
+    try:
+        with open(DEFAULT_CONFIG_FILE, 'r') as f:
+            defaults = json.load(f)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Default config file not found")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Invalid default config file format")
+    write_config_atomic(defaults)
+    return Settings(**defaults)
 
 
 @app.post("/api/settings")

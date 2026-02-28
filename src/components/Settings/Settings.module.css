@@ -404,3 +404,30 @@
 .resetBtn:active {
   transform: scale(0.98);
 }
+
+.dangerDescription {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0 0 16px 0;
+}
+
+.resetAllBtn {
+  padding: 10px 20px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  background: transparent;
+  border: 2px solid var(--color-vessel-bk);
+  border-radius: var(--radius-md);
+  color: var(--color-vessel-bk);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  width: 100%;
+}
+
+.resetAllBtn:hover {
+  background: color-mix(in srgb, var(--color-vessel-bk) 15%, transparent);
+}
+
+.resetAllBtn:active {
+  transform: scale(0.98);
+}

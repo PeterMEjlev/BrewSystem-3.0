@@ -23,6 +23,7 @@ function BrewingPanel() {
   const [states, setStates] = useState(brewSystem.getAllStates());
   const [regulationConfig, setRegulationConfig] = useState(DEFAULT_REG_CONFIG);
   const [maxWatts, setMaxWatts] = useState(11000);
+  const [priorityPot, setPriorityPot] = useState('BK');
 
   // Read environment once on mount — avoids re-renders when localStorage changes
   const isProduction = useRef(
@@ -96,28 +97,35 @@ function BrewingPanel() {
     }
     if (updates.efficiency !== undefined) {
       brewSystem.setPotEfficiency(potName, updates.efficiency);
+      // The pot whose efficiency the user just changed becomes the priority pot
+      if (potName === 'BK' || potName === 'HLT') setPriorityPot(potName);
       if (isProduction) {
-        // For HLT, cap the efficiency to stay within the max watts budget (BK has priority)
-        let sendEff = updates.efficiency;
-        if (potName === 'HLT') {
-          const bkOn = states.pots.BK.heaterOn;
-          const bkEff = states.pots.BK.efficiency;
-          const bkWatts = (bkOn ? bkEff : 0) / 100 * BK_MAX_WATTS;
-          const hltHeadroom = maxWatts - bkWatts;
-          const hltCap = Math.max(0, Math.min(100, (hltHeadroom / HLT_MAX_WATTS) * 100));
-          sendEff = Math.min(updates.efficiency, hltCap);
+        hardwareApi.setPotEfficiency(potName, updates.efficiency);
+        // Throttle the non-priority (yielding) pot to stay within the remaining headroom
+        if (potName === 'BK' && states.pots.HLT.heaterOn) {
+          const usedByBk = (states.pots.BK.heaterOn ? updates.efficiency : 0) / 100 * BK_MAX_WATTS;
+          const newHltCap = Math.max(0, Math.min(100, ((maxWatts - usedByBk) / HLT_MAX_WATTS) * 100));
+          hardwareApi.setPotEfficiency('HLT', Math.min(states.pots.HLT.efficiency, newHltCap));
+        } else if (potName === 'HLT' && states.pots.BK.heaterOn) {
+          const usedByHlt = (states.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * HLT_MAX_WATTS;
+          const newBkCap = Math.max(0, Math.min(100, ((maxWatts - usedByHlt) / BK_MAX_WATTS) * 100));
+          hardwareApi.setPotEfficiency('BK', Math.min(states.pots.BK.efficiency, newBkCap));
         }
-        hardwareApi.setPotEfficiency(potName, sendEff);
       }
     }
-    // When BK power or efficiency changes, resync throttled HLT efficiency to hardware
-    if (isProduction && potName === 'BK' && states.pots.HLT.heaterOn) {
-      const newBkOn = updates.heaterOn !== undefined ? updates.heaterOn : states.pots.BK.heaterOn;
-      const newBkEff = updates.efficiency !== undefined ? updates.efficiency : states.pots.BK.efficiency;
-      const newBkWatts = (newBkOn ? newBkEff : 0) / 100 * BK_MAX_WATTS;
-      const newHltCap = Math.max(0, Math.min(100, ((maxWatts - newBkWatts) / HLT_MAX_WATTS) * 100));
-      const newHltEff = Math.min(states.pots.HLT.efficiency, newHltCap);
-      hardwareApi.setPotEfficiency('HLT', newHltEff);
+    // When a heater is toggled, resync the yielding pot's efficiency to hardware
+    if (isProduction && (potName === 'BK' || potName === 'HLT') && updates.heaterOn !== undefined) {
+      const newBkOn = potName === 'BK' ? updates.heaterOn : states.pots.BK.heaterOn;
+      const newHltOn = potName === 'HLT' ? updates.heaterOn : states.pots.HLT.heaterOn;
+      if (priorityPot === 'BK' && newHltOn) {
+        const usedByBk = (newBkOn ? states.pots.BK.efficiency : 0) / 100 * BK_MAX_WATTS;
+        const newHltCap = Math.max(0, Math.min(100, ((maxWatts - usedByBk) / HLT_MAX_WATTS) * 100));
+        hardwareApi.setPotEfficiency('HLT', Math.min(states.pots.HLT.efficiency, newHltCap));
+      } else if (priorityPot === 'HLT' && newBkOn) {
+        const usedByHlt = (newHltOn ? states.pots.HLT.efficiency : 0) / 100 * HLT_MAX_WATTS;
+        const newBkCap = Math.max(0, Math.min(100, ((maxWatts - usedByHlt) / BK_MAX_WATTS) * 100));
+        hardwareApi.setPotEfficiency('BK', Math.min(states.pots.BK.efficiency, newBkCap));
+      }
     }
     if (isProduction) {
       setStates((prev) => ({
@@ -148,14 +156,25 @@ function BrewingPanel() {
     }
   };
 
-  // Derive effective (throttled) power and slider caps for each pot
-  const bkCap = Math.floor(Math.min(100, (maxWatts / BK_MAX_WATTS) * 100));
-  const bkEffective = states.pots.BK.heaterOn ? states.pots.BK.efficiency : 0;
-  const bkWatts = Math.round((bkEffective / 100) * BK_MAX_WATTS);
-  const hltHeadroom = maxWatts - bkWatts;
-  const hltCap = Math.floor(Math.max(0, Math.min(100, (hltHeadroom / HLT_MAX_WATTS) * 100)));
-  const hltEffective = states.pots.HLT.heaterOn ? Math.min(states.pots.HLT.efficiency, hltCap) : 0;
-  const hltWatts = Math.round((hltEffective / 100) * HLT_MAX_WATTS);
+  // Derive effective (throttled) power and slider caps — priority pot gets its requested
+  // efficiency; the other pot yields to fit within the remaining headroom.
+  let bkCap, hltCap, bkEffective, hltEffective, bkWatts, hltWatts;
+  if (priorityPot === 'HLT') {
+    hltCap      = Math.floor(Math.min(100, (maxWatts / HLT_MAX_WATTS) * 100));
+    hltEffective = states.pots.HLT.heaterOn ? states.pots.HLT.efficiency : 0;
+    hltWatts    = Math.round((hltEffective / 100) * HLT_MAX_WATTS);
+    bkCap       = Math.floor(Math.max(0, Math.min(100, ((maxWatts - hltWatts) / BK_MAX_WATTS) * 100)));
+    bkEffective  = states.pots.BK.heaterOn ? Math.min(states.pots.BK.efficiency, bkCap) : 0;
+    bkWatts     = Math.round((bkEffective / 100) * BK_MAX_WATTS);
+  } else {
+    // BK has priority (default)
+    bkCap       = Math.floor(Math.min(100, (maxWatts / BK_MAX_WATTS) * 100));
+    bkEffective  = states.pots.BK.heaterOn ? states.pots.BK.efficiency : 0;
+    bkWatts     = Math.round((bkEffective / 100) * BK_MAX_WATTS);
+    hltCap      = Math.floor(Math.max(0, Math.min(100, ((maxWatts - bkWatts) / HLT_MAX_WATTS) * 100)));
+    hltEffective = states.pots.HLT.heaterOn ? Math.min(states.pots.HLT.efficiency, hltCap) : 0;
+    hltWatts    = Math.round((hltEffective / 100) * HLT_MAX_WATTS);
+  }
   const totalWatts = bkWatts + hltWatts;
   const isOverLimit = totalWatts > maxWatts;
 

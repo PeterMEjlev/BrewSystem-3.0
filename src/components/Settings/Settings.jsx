@@ -143,6 +143,24 @@ function Settings() {
     saveSettings(newSettings);
   };
 
+  const handleResetAllSettings = async () => {
+    if (!window.confirm('Reset all settings to defaults? This cannot be undone.')) return;
+    try {
+      setSaveStatus('Resetting...');
+      const response = await fetch('/api/settings/reset', { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to reset settings');
+      const data = await response.json();
+      setSettings(data);
+      resetTheme();
+      setSaveStatus('Reset to defaults ✓');
+      setTimeout(() => setSaveStatus(''), 2000);
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      setSaveStatus('Error resetting');
+      setTimeout(() => setSaveStatus(''), 3000);
+    }
+  };
+
   const toggleEnvironment = () => {
     const newValue = !isDevelopment;
     setIsDevelopment(newValue);
@@ -748,6 +766,15 @@ function Settings() {
           <p>Web-based brewery control system</p>
           <p>Designed for Raspberry Pi kiosk mode</p>
         </div>
+      </div>
+
+      {/* Reset All Settings */}
+      <div className={styles.section}>
+        <h3 className={styles.sectionTitle}>Danger Zone</h3>
+        <p className={styles.dangerDescription}>Reset all settings and colors back to their default values.</p>
+        <button className={styles.resetAllBtn} onClick={handleResetAllSettings}>
+          Reset All Settings to Defaults
+        </button>
       </div>
     </div>
   );
