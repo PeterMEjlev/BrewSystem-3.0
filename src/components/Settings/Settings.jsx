@@ -211,6 +211,18 @@ function Settings() {
         {expandedSections.programSettings && (
           <div className={styles.sectionContent}>
 
+            {/* Max system power */}
+            <div className={styles.inputGroup}>
+              <label>Max System Power (W):</label>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={settings.app.max_watts}
+                onChange={(e) => updateSetting('app.max_watts', parseInt(e.target.value))}
+              />
+            </div>
+
             {/* Chart logging frequency */}
             <div className={styles.inputGroup}>
               <label>Chart Logging Frequency (seconds):</label>

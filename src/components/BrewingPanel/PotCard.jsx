@@ -13,7 +13,7 @@ const DEFAULT_REG_CONFIG = {
   ],
 };
 
-function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, onUpdate }) {
+function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, effectiveEfficiency = 0, potMaxWatts = 0, efficiencyCap = 100, onUpdate }) {
   const [localSV, setLocalSV] = useState(potState.sv || 75);
   const [localEfficiency, setLocalEfficiency] = useState(potState.efficiency || 0);
 
@@ -41,7 +41,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   };
 
   const handleEfficiencyChange = (e) => {
-    const value = parseFloat(e.target.value);
+    const value = Math.min(parseFloat(e.target.value), efficiencyCap);
     setLocalEfficiency(value);
     onUpdate({ efficiency: value });
   };
@@ -56,22 +56,23 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
           onUpdate({ heaterOn: false });
         }
       } else {
-        // Below target – compute step power and ensure heater is on
+        // Below target – compute step power (capped by the power limit) and ensure heater is on
         const steps = regulationConfig.steps;
         let power = steps[steps.length - 1].power;
         for (const step of steps.slice(0, -1)) {
           if (diff > step.threshold) { power = step.power; break; }
         }
+        const cappedPower = Math.min(power, efficiencyCap);
         if (!potState.heaterOn) {
-          setLocalEfficiency(power);
-          onUpdate({ heaterOn: true, efficiency: power });
-        } else if (localEfficiency !== power) {
-          setLocalEfficiency(power);
-          onUpdate({ efficiency: power });
+          setLocalEfficiency(cappedPower);
+          onUpdate({ heaterOn: true, efficiency: cappedPower });
+        } else if (localEfficiency !== cappedPower) {
+          setLocalEfficiency(cappedPower);
+          onUpdate({ efficiency: cappedPower });
         }
       }
     }
-  }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig]);
+  }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig, efficiencyCap]);
 
   // Manual efficiency control when regulation is enabled but auto efficiency is off
   useEffect(() => {
@@ -91,10 +92,20 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
     }
   }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig, localEfficiency]);
 
+  // Clamp slider down when the power cap drops below the current requested efficiency
+  useEffect(() => {
+    if (type !== 'MLT' && localEfficiency > efficiencyCap) {
+      setLocalEfficiency(efficiencyCap);
+      onUpdate({ efficiency: efficiencyCap });
+    }
+  }, [efficiencyCap]);
+
   const { theme } = useTheme();
   const pvColor = getTemperatureColor(potState.pv);
   const svColor = getTemperatureColor(localSV);
-  const glowIntensity = type !== 'MLT' && potState.heaterOn ? localEfficiency / 100 : 0;
+  const glowIntensity = type !== 'MLT' && potState.heaterOn ? effectiveEfficiency / 100 : 0;
+  const wattsDrawn = type !== 'MLT' && potState.heaterOn ? Math.round((effectiveEfficiency / 100) * potMaxWatts) : 0;
+  const isThrottled = type !== 'MLT' && potState.heaterOn && effectiveEfficiency < localEfficiency;
 
   return (
     <div
@@ -141,6 +152,14 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
             <div className={styles.svValue} style={{ color: svColor }}>
               {localSV.toFixed(1)}°
             </div>
+          </div>
+        )}
+        {type !== 'MLT' && (
+          <div className={styles.wattsRow}>
+            <span className={`${styles.wattsValue} ${isThrottled ? styles.wattsThrottled : ''}`}>
+              {wattsDrawn.toLocaleString()} W
+            </span>
+            {isThrottled && <span className={styles.throttleTag}>limited</span>}
           </div>
         )}
       </div>

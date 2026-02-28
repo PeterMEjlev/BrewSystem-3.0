@@ -170,6 +170,36 @@
   font-family: var(--font-mono);
 }
 
+.wattsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.wattsValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+}
+
+.wattsValue.wattsThrottled {
+  color: #f97316;
+}
+
+.throttleTag {
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  color: #f97316;
+  background: rgba(249, 115, 22, 0.15);
+  border-radius: var(--radius-md);
+  padding: 2px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .control {
   display: flex;
   flex-direction: column;

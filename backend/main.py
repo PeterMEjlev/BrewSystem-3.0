@@ -78,6 +78,7 @@ class AutoEfficiencySettings(BaseModel):
 
 class AppSettings(BaseModel):
     log_interval_seconds: int = 10
+    max_watts: int = 11000
     auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
 
 
