@@ -433,9 +433,9 @@ function TemperatureChart() {
               formatter={(value, name) => [`${Number(value).toFixed(1)} °C`, name]}
             />
             <Legend wrapperStyle={{ color: '#cbd5e1' }} />
-            {visibility.BK && <Line type="monotone" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} />}
-            {visibility.MLT && <Line type="monotone" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} />}
-            {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} />}
+            {visibility.BK && <Line type="monotone" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} isAnimationActive={false} />}
+            {visibility.MLT && <Line type="monotone" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} isAnimationActive={false} />}
+            {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} isAnimationActive={false} />}
           </LineChart>
         </ResponsiveContainer>
       </div>

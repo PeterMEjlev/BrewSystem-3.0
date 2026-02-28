@@ -22,50 +22,15 @@
   width: 100%;
 }
 
-.powerBar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-lg);
-}
-
-.powerBarLabel {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-}
-
-.powerBarTrack {
-  flex: 1;
-  height: 8px;
-  background: var(--color-border-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.powerBarFill {
-  height: 100%;
-  background: var(--gradient-warm);
-  border-radius: var(--radius-md);
-  transition: width 0.4s ease;
-}
-
-.powerBarFill.powerBarOver {
-  background: #ef4444;
-}
-
-.powerBarValue {
+.powerText {
+  text-align: center;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
   font-family: var(--font-mono);
-  color: var(--color-text-secondary);
-  white-space: nowrap;
+  color: var(--color-text-muted);
 }
 
-.powerBarValue.powerBarOver {
+.powerTextOver {
   color: #ef4444;
 }
 

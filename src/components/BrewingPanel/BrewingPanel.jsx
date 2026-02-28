@@ -161,20 +161,6 @@ function BrewingPanel() {
 
   return (
     <div className={styles.brewingPanel}>
-      {/* Power status bar */}
-      <div className={styles.powerBar}>
-        <span className={styles.powerBarLabel}>System Power</span>
-        <div className={styles.powerBarTrack}>
-          <div
-            className={`${styles.powerBarFill} ${isOverLimit ? styles.powerBarOver : ''}`}
-            style={{ width: `${Math.min(100, (totalWatts / maxWatts) * 100)}%` }}
-          />
-        </div>
-        <span className={`${styles.powerBarValue} ${isOverLimit ? styles.powerBarOver : ''}`}>
-          {totalWatts.toLocaleString()} / {maxWatts.toLocaleString()} W
-        </span>
-      </div>
-
       {/* Pot Cards Row - Strict order: BK, MLT, HLT */}
       <div className={styles.potRow}>
         <PotCard
@@ -223,6 +209,11 @@ function BrewingPanel() {
           onUpdate={(updates) => handlePumpUpdate('P2', updates)}
         />
       </div>
+
+      {/* Power readout */}
+      <span className={`${styles.powerText} ${isOverLimit ? styles.powerTextOver : ''}`}>
+        {totalWatts.toLocaleString()} / {maxWatts.toLocaleString()} W
+      </span>
     </div>
   );
 }
