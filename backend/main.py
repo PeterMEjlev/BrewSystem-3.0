@@ -40,8 +40,17 @@ async def _temperature_log_loop():
             logging.getLogger(__name__).error("Temp log error: %s", e)
 
 
+def _normalize_config():
+    """Ensure config.json contains all keys defined in the Settings model."""
+    config = read_config()
+    normalized = Settings(**config).model_dump()
+    if normalized != config:
+        write_config_atomic(normalized)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _normalize_config()
     session_logger.start_new_session()
     task = asyncio.create_task(_temperature_log_loop())
     yield
@@ -126,10 +135,10 @@ def write_config_atomic(data: Dict[str, Any]) -> None:
 
 
 @app.get("/api/settings")
-async def get_settings() -> Settings:
-    """Get current settings"""
+async def get_settings():
+    """Get current settings (always includes Pydantic defaults)"""
     config = read_config()
-    return Settings(**config)
+    return Settings(**config).model_dump()
 
 
 @app.post("/api/settings/reset")

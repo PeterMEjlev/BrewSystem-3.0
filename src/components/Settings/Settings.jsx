@@ -68,6 +68,13 @@ function Settings() {
       const response = await fetch('/api/settings');
       if (!response.ok) throw new Error('Failed to fetch settings');
       const data = await response.json();
+      // Ensure app settings always contain keys with defaults,
+      // even if they're missing from the backend response
+      data.app = {
+        max_watts: 11000,
+        max_chart_points: 500,
+        ...data.app,
+      };
       setSettings(data);
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -96,7 +103,8 @@ function Settings() {
   };
 
   const updateSetting = (path, value) => {
-    const newSettings = { ...settings };
+    if (typeof value === 'number' && isNaN(value)) return;
+    const newSettings = JSON.parse(JSON.stringify(settings));
     const keys = path.split('.');
     let current = newSettings;
     for (let i = 0; i < keys.length - 1; i++) {
@@ -259,7 +267,7 @@ function Settings() {
                 type="number"
                 min="50"
                 step="50"
-                value={settings.app.max_chart_points ?? 500}
+                value={settings.app.max_chart_points}
                 onChange={(e) => updateSetting('app.max_chart_points', parseInt(e.target.value))}
               />
             </div>

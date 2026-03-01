@@ -89,6 +89,9 @@ function startGlobalPolling() {
     .catch(() => beginPolling(10000));
 }
 
+// Start polling immediately on module load (not lazily on first mount)
+startGlobalPolling();
+
 function TemperatureChart() {
   const { theme } = useTheme();
   const [data, setData] = useState(persistedData);
@@ -105,9 +108,8 @@ function TemperatureChart() {
   const panRef = useRef(null); // { startX, domainStart, domainEnd }
   const touchRef = useRef(null); // { distance, centerX, domainStart, domainEnd }
 
-  // Start global polling once and subscribe to data updates
+  // Subscribe to data updates (polling already started at module level)
   useEffect(() => {
-    startGlobalPolling();
     const handler = (snapshot) => setData(snapshot);
     subscribers.add(handler);
     // Sync with any data collected while unmounted

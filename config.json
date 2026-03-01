@@ -30,9 +30,9 @@
     }
   },
   "app": {
-    "log_interval_seconds": 1,
+    "log_interval_seconds": 5,
     "max_watts": 11000,
-    "max_chart_points": 200,
+    "max_chart_points": 500,
     "auto_efficiency": {
       "enabled": true,
       "steps": [
