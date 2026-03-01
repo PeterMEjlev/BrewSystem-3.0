@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 
 export const DEFAULT_THEME = {
   bgPrimary: '#0f172a',
+  bgDeep: '#080c16',
   bgSecondary: '#1e293b',
   accentBlue: '#3b82f6',
   accentGreen: '#10b981',
@@ -27,6 +28,7 @@ export const DEFAULT_THEME = {
 // Maps theme keys to CSS custom property names
 const CSS_VAR_MAP = {
   bgPrimary: '--color-bg-primary',
+  bgDeep: '--color-bg-deep',
   bgSecondary: '--color-bg-secondary',
   accentBlue: '--color-accent-blue',
   accentGreen: '--color-accent-green',

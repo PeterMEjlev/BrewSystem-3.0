@@ -225,6 +225,7 @@ function Settings() {
         </div>
       </div>
 
+      <div className={styles.sectionsGrid}>
       {/* Program Settings */}
       <div className={styles.section}>
         <h3
@@ -583,6 +584,15 @@ function Settings() {
               />
             </div>
             <div className={styles.colorGroup}>
+              <label>Background Gradient End:</label>
+              <input
+                type="color"
+                value={theme.bgDeep}
+                onChange={(e) => updateColor('bgDeep', e.target.value)}
+                className={styles.colorPicker}
+              />
+            </div>
+            <div className={styles.colorGroup}>
               <label>Card Background:</label>
               <input
                 type="color"
@@ -795,6 +805,7 @@ function Settings() {
         <button className={styles.resetAllBtn} onClick={handleResetAllSettings}>
           Reset All Settings to Defaults
         </button>
+      </div>
       </div>
     </div>
   );

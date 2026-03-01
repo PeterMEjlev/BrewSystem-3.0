@@ -44,12 +44,8 @@ function BrewingPanel() {
     // Initialize GPIO pins on the Pi when in production mode
     if (isProduction) {
       hardwareApi.initialize();
-    }
-
-    // Poll state every 500ms
-    const interval = setInterval(async () => {
-      if (isProduction) {
-        const state = await hardwareApi.getFullState();
+      // Sync control state from backend once on mount
+      hardwareApi.getFullState().then((state) => {
         if (state) {
           setStates((prev) => ({
             pots: {
@@ -60,6 +56,23 @@ function BrewingPanel() {
             pumps: {
               P1: { ...prev.pumps.P1, ...state.controlState.pumps.P1 },
               P2: { ...prev.pumps.P2, ...state.controlState.pumps.P2 },
+            },
+          }));
+        }
+      });
+    }
+
+    // Poll temperatures every 500ms — control state is managed locally
+    const interval = setInterval(async () => {
+      if (isProduction) {
+        const temps = await hardwareApi.getTemperatures();
+        if (temps) {
+          setStates((prev) => ({
+            ...prev,
+            pots: {
+              BK:  { ...prev.pots.BK,  pv: temps.bk  },
+              MLT: { ...prev.pots.MLT, pv: temps.mlt },
+              HLT: { ...prev.pots.HLT, pv: temps.hlt },
             },
           }));
         }

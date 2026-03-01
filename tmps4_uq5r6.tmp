@@ -30,9 +30,9 @@
     }
   },
   "app": {
-    "log_interval_seconds": 5,
+    "log_interval_seconds": 1,
     "max_watts": 11000,
-    "max_chart_points": 20,
+    "max_chart_points": 500,
     "auto_efficiency": {
       "enabled": true,
       "steps": [
@@ -55,5 +55,9 @@
       ]
     }
   },
-  "theme": {}
+  "theme": {
+    "bgPrimary": "#ffffff",
+    "bgSecondary": "#141c29",
+    "border": "#3c72be"
+  }
 }

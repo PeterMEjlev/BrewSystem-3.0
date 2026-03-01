@@ -13,8 +13,12 @@ function App() {
     <ThemeProvider>
       <div className="app">
         <main className="main-content">
-          {activePanel === 'brewing' && <BrewingPanel />}
-          {activePanel === 'chart' && <TemperatureChart />}
+          <div style={{ display: activePanel === 'brewing' ? 'contents' : 'none' }}>
+            <BrewingPanel />
+          </div>
+          <div style={{ display: activePanel === 'chart' ? 'contents' : 'none' }}>
+            <TemperatureChart />
+          </div>
           {activePanel === 'settings' && <Settings />}
         </main>
         <BottomNav activePanel={activePanel} onPanelChange={setActivePanel} />

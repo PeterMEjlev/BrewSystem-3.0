@@ -32,7 +32,7 @@ function waitForBackend(url, retries = 30, delay = 1000) {
 
 async function createWindow() {
   const win = new BrowserWindow({
-    icon: path.join(__dirname, '..', 'Icon_Beer.png'),
+    icon: path.join(__dirname, '..', 'Icon_App.png'),
     kiosk: true,
     fullscreen: true,
     frame: false,
