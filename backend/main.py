@@ -17,7 +17,7 @@ from session_logger import session_logger
 
 # Suppress high-frequency polling endpoints from the access log
 class _SuppressPollingFilter(logging.Filter):
-    _SUPPRESSED = {"/api/hardware/temperature"}
+    _SUPPRESSED = {"/api/hardware/temperature", "/api/hardware/state"}
 
     def filter(self, record):
         msg = record.getMessage()
@@ -67,8 +67,17 @@ app = FastAPI(title="Brew System API", lifespan=lifespan)
 CONFIG_FILE = Path(__file__).parent.parent / "config.json"
 DEFAULT_CONFIG_FILE = Path(__file__).parent.parent / "config.default.json"
 
-# Track last known pump speed so we can restore it when toggling power
-_pump_speeds: Dict[str, float] = {"P1": 0.0, "P2": 0.0}
+# Shared control state — the single source of truth for all connected clients
+_control_state: Dict[str, Any] = {
+    "pots": {
+        "BK":  {"heaterOn": False, "sv": 100.0, "efficiency": 0, "regulationEnabled": False},
+        "HLT": {"heaterOn": False, "sv": 55.0,  "efficiency": 0, "regulationEnabled": False},
+    },
+    "pumps": {
+        "P1": {"on": False, "speed": 0.0},
+        "P2": {"on": False, "speed": 0.0},
+    },
+}
 
 
 class AutoEfficiencyStep(BaseModel):
@@ -173,6 +182,12 @@ class PotPowerRequest(BaseModel):
 class PotEfficiencyRequest(BaseModel):
     value: float
 
+class PotSvRequest(BaseModel):
+    value: float
+
+class PotRegulationRequest(BaseModel):
+    enabled: bool
+
 class PumpPowerRequest(BaseModel):
     on: bool
 
@@ -202,6 +217,12 @@ def _pump_pin_map(pump: str, config: Dict[str, Any]):
 async def initialize_hardware() -> Dict[str, str]:
     """Initialize all GPIO pins to LOW and start a new temperature log session"""
     utils_rpi.initialize_gpio()
+    for pot in _control_state["pots"].values():
+        pot["heaterOn"] = False
+        pot["efficiency"] = 0
+    for pump in _control_state["pumps"].values():
+        pump["on"] = False
+        pump["speed"] = 0.0
     session_logger.start_new_session()
     return {"status": "ok"}
 
@@ -216,6 +237,7 @@ async def set_pot_power(pot: str, body: PotPowerRequest) -> Dict[str, str]:
     config = read_config()
     relay_pin, pwm_pin, frequency = _pot_pin_map(pot, config)
 
+    _control_state["pots"][pot]["heaterOn"] = body.on
     if body.on:
         utils_rpi.set_gpio_high(relay_pin)
         utils_rpi.set_pwm_signal(pwm_pin, frequency, 0)
@@ -235,6 +257,7 @@ async def set_pot_efficiency(pot: str, body: PotEfficiencyRequest) -> Dict[str, 
 
     config = read_config()
     _, pwm_pin, _ = _pot_pin_map(pot, config)
+    _control_state["pots"][pot]["efficiency"] = body.value
     utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)
     return {"status": "ok"}
 
@@ -249,9 +272,10 @@ async def set_pump_power(pump: str, body: PumpPowerRequest) -> Dict[str, str]:
     config = read_config()
     relay_pin, pwm_pin, frequency = _pump_pin_map(pump, config)
 
+    _control_state["pumps"][pump]["on"] = body.on
     if body.on:
         utils_rpi.set_gpio_high(relay_pin)
-        utils_rpi.set_pwm_signal(pwm_pin, frequency, _pump_speeds.get(pump, 0))
+        utils_rpi.set_pwm_signal(pwm_pin, frequency, _control_state["pumps"][pump]["speed"])
     else:
         utils_rpi.set_gpio_low(relay_pin)
         utils_rpi.stop_pwm_signal(pwm_pin)
@@ -266,11 +290,40 @@ async def set_pump_speed(pump: str, body: PumpSpeedRequest) -> Dict[str, str]:
     if pump not in ("P1", "P2"):
         raise HTTPException(status_code=400, detail=f"Unknown pump: {pump}")
 
-    _pump_speeds[pump] = body.value
+    _control_state["pumps"][pump]["speed"] = body.value
     config = read_config()
     _, pwm_pin, _ = _pump_pin_map(pump, config)
     utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)
     return {"status": "ok"}
+
+
+@app.post("/api/hardware/pot/{pot}/sv")
+async def set_pot_sv(pot: str, body: PotSvRequest) -> Dict[str, str]:
+    """Set pot target temperature (set value)"""
+    pot = pot.upper()
+    if pot not in ("BK", "HLT"):
+        raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
+    _control_state["pots"][pot]["sv"] = body.value
+    return {"status": "ok"}
+
+
+@app.post("/api/hardware/pot/{pot}/regulation")
+async def set_pot_regulation(pot: str, body: PotRegulationRequest) -> Dict[str, str]:
+    """Enable or disable auto-regulation for a pot"""
+    pot = pot.upper()
+    if pot not in ("BK", "HLT"):
+        raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
+    _control_state["pots"][pot]["regulationEnabled"] = body.enabled
+    return {"status": "ok"}
+
+
+@app.get("/api/hardware/state")
+async def get_full_state() -> Dict[str, Any]:
+    """Return temperatures and control state in a single response"""
+    config = read_config()
+    sensors = config["sensors"]["ds18b20"]
+    temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
+    return {"temperatures": temps, "controlState": _control_state}
 
 
 @app.get("/api/hardware/temperature")

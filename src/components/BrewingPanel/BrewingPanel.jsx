@@ -27,7 +27,7 @@ function BrewingPanel() {
 
   // Read environment once on mount — avoids re-renders when localStorage changes
   const isProduction = useRef(
-    localStorage.getItem('brewSystemEnvironment') === 'production'
+    localStorage.getItem('brewSystemEnvironment') !== 'development'
   ).current;
 
   useEffect(() => {
@@ -49,16 +49,17 @@ function BrewingPanel() {
     // Poll state every 500ms
     const interval = setInterval(async () => {
       if (isProduction) {
-        // Get real temperatures from the Pi; keep mock state for UI state (regulation, sv, etc.)
-        const temps = await hardwareApi.getTemperatures();
-        if (temps) {
+        const state = await hardwareApi.getFullState();
+        if (state) {
           setStates((prev) => ({
-            ...prev,
             pots: {
-              ...prev.pots,
-              BK:  { ...prev.pots.BK,  pv: temps.bk  },
-              MLT: { ...prev.pots.MLT, pv: temps.mlt },
-              HLT: { ...prev.pots.HLT, pv: temps.hlt },
+              BK:  { ...prev.pots.BK,  pv: state.temperatures.bk,  ...state.controlState.pots.BK  },
+              MLT: { ...prev.pots.MLT, pv: state.temperatures.mlt },
+              HLT: { ...prev.pots.HLT, pv: state.temperatures.hlt, ...state.controlState.pots.HLT },
+            },
+            pumps: {
+              P1: { ...prev.pumps.P1, ...state.controlState.pumps.P1 },
+              P2: { ...prev.pumps.P2, ...state.controlState.pumps.P2 },
             },
           }));
         }
@@ -91,9 +92,11 @@ function BrewingPanel() {
     }
     if (updates.regulationEnabled !== undefined) {
       brewSystem.setPotRegulation(potName, updates.regulationEnabled);
+      if (isProduction) hardwareApi.setPotRegulation(potName, updates.regulationEnabled);
     }
     if (updates.sv !== undefined) {
       brewSystem.setPotSetValue(potName, updates.sv);
+      if (isProduction) hardwareApi.setPotSv(potName, updates.sv);
     }
     if (updates.efficiency !== undefined) {
       brewSystem.setPotEfficiency(potName, updates.efficiency);

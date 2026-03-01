@@ -27,7 +27,7 @@ function startGlobalPolling() {
   if (pollingStarted) return;
   pollingStarted = true;
 
-  const isProduction = localStorage.getItem('brewSystemEnvironment') === 'production';
+  const isProduction = localStorage.getItem('brewSystemEnvironment') !== 'development';
 
   // Seed with history in production
   if (isProduction) {

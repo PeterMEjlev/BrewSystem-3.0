@@ -37,6 +37,20 @@ export const hardwareApi = {
   setPumpSpeed: (pump, value) =>
     post(`/api/hardware/pump/${pump}/speed`, { value }),
 
+  /** Set pot target temperature. pot = 'BK' | 'HLT' */
+  setPotSv: (pot, value) =>
+    post(`/api/hardware/pot/${pot}/sv`, { value }),
+
+  /** Enable or disable auto-regulation. pot = 'BK' | 'HLT' */
+  setPotRegulation: (pot, enabled) =>
+    post(`/api/hardware/pot/${pot}/regulation`, { enabled }),
+
+  /** Read temperatures + full control state. Returns { temperatures, controlState } or null */
+  getFullState: () =>
+    fetch('/api/hardware/state')
+      .then((r) => r.json())
+      .catch(() => null),
+
   /** Read all three DS18B20 sensors. Returns { bk, mlt, hlt } or null on error */
   getTemperatures: () =>
     fetch('/api/hardware/temperature')
