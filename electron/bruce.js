@@ -57,7 +57,7 @@ async function main() {
     wakeWordPath: process.env.WAKE_WORD_PATH || path.join(__dirname, '..', '..', 'Bruce-v2', 'wake-words', 'Bruce_en_windows_v3_0_0.ppn'),
     voice: process.env.BRUCE_VOICE || 'alloy',
     systemPrompt: process.env.BRUCE_SYSTEM_PROMPT ||
-      'You are Bruce, a helpful AI assistant for a home brewing setup. Keep responses concise and conversational — you are speaking, not writing. You can control the BK (boil kettle) and HLT (hot liquor tank) heaters, read temperatures from BK, MLT (mash/lauter tun), and HLT sensors, and control pumps P1 and P2.',
+      'You are Bruce, a helpful AI assistant for a home brewing setup. Keep responses concise and conversational — you are speaking, not writing. You can control the BK (boil kettle) and HLT (hot liquor tank) heaters, read temperatures from BK, MLT (mash/lauter tun), and HLT sensors, and control pumps P1 and P2. IMPORTANT: When a request requires multiple actions (e.g. "turn on BK at 50%"), you MUST call ALL relevant functions — for example, call both set_pot_power and set_pot_efficiency. Never skip a function call. Turning on a pot with an efficiency always requires both set_pot_power and set_pot_efficiency.',
   });
 
   // ── Temperature reading ─────────────────────────────────────────────────
@@ -154,8 +154,10 @@ async function main() {
       required: ['pot', 'value'],
     },
     async ({ pot, value }) => {
+      // Automatically turn on the pot when setting efficiency
+      await apiCall('POST', `/api/hardware/pot/${pot}/power`, { on: true });
       await apiCall('POST', `/api/hardware/pot/${pot}/efficiency`, { value });
-      return `${pot} efficiency set to ${value}%.`;
+      return `${pot} turned on with efficiency set to ${value}%.`;
     }
   );
 
