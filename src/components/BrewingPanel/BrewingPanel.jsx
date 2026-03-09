@@ -62,17 +62,21 @@ function BrewingPanel() {
       });
     }
 
-    // Poll temperatures every 500ms — control state is managed locally
+    // Poll full state every 500ms so external changes (e.g. Bruce voice
+    // assistant) are reflected in the UI.
     const interval = setInterval(async () => {
       if (isProduction) {
-        const temps = await hardwareApi.getTemperatures();
-        if (temps) {
+        const state = await hardwareApi.getFullState();
+        if (state) {
           setStates((prev) => ({
-            ...prev,
             pots: {
-              BK:  { ...prev.pots.BK,  pv: temps.bk  },
-              MLT: { ...prev.pots.MLT, pv: temps.mlt },
-              HLT: { ...prev.pots.HLT, pv: temps.hlt },
+              BK:  { ...prev.pots.BK,  pv: state.temperatures.bk,  ...state.controlState.pots.BK  },
+              MLT: { ...prev.pots.MLT, pv: state.temperatures.mlt },
+              HLT: { ...prev.pots.HLT, pv: state.temperatures.hlt, ...state.controlState.pots.HLT },
+            },
+            pumps: {
+              P1: { ...prev.pumps.P1, ...state.controlState.pumps.P1 },
+              P2: { ...prev.pumps.P2, ...state.controlState.pumps.P2 },
             },
           }));
         }
