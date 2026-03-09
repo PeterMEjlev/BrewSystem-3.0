@@ -1,4 +1,6 @@
+require('dotenv').config();
 const { app, BrowserWindow, globalShortcut } = require('electron');
+const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
 
@@ -7,6 +9,27 @@ const LOAD_URL = isDev ? 'http://localhost:5173' : 'http://localhost:8000';
 
 // Limit V8 heap for Pi memory constraints
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
+
+let bruceProcess = null;
+
+function startBruce() {
+  const bruceScript = path.join(__dirname, 'bruce.js');
+  bruceProcess = spawn(process.platform === 'win32' ? 'node.exe' : 'node', [bruceScript], {
+    cwd: path.join(__dirname, '..'),
+    stdio: 'inherit',
+    env: { ...process.env },
+  });
+
+  bruceProcess.on('error', (err) => {
+    console.error('[Bruce] Failed to start:', err.message);
+    bruceProcess = null;
+  });
+
+  bruceProcess.on('exit', (code) => {
+    console.log(`[Bruce] Process exited with code ${code}`);
+    bruceProcess = null;
+  });
+}
 
 function waitForBackend(url, retries = 30, delay = 1000) {
   return new Promise((resolve) => {
@@ -53,6 +76,7 @@ async function createWindow() {
   const backendReady = await waitForBackend(LOAD_URL);
   if (backendReady) {
     win.loadURL(LOAD_URL);
+    startBruce();
   } else {
     win.loadURL(`data:text/html,<h1 style="color:white;background:#1a1a1a;margin:0;padding:2rem;font-family:sans-serif">Waiting for backend at ${LOAD_URL}... Please ensure the server is running.</h1>`);
   }
@@ -70,4 +94,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (bruceProcess && !bruceProcess.killed) {
+    bruceProcess.kill();
+  }
 });
