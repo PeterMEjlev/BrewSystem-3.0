@@ -13,10 +13,10 @@
     "electron:start": "node electron/launch.js"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
     "bruce-assistant": "file:../Bruce-v2",
     "dotenv": "^17.3.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "recharts": "^3.7.0"
   },
   "devDependencies": {
