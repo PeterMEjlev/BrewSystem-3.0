@@ -135,8 +135,10 @@ async function main() {
       required: ['pot', 'value'],
     },
     async ({ pot, value }) => {
+      // Automatically enable regulation when setting a target temperature
       await apiCall('POST', `/api/hardware/pot/${pot}/sv`, { value });
-      return `${pot} target temperature set to ${value}°C.`;
+      await apiCall('POST', `/api/hardware/pot/${pot}/regulation`, { enabled: true });
+      return `${pot} target temperature set to ${value}°C with regulation enabled.`;
     }
   );
 
@@ -213,8 +215,10 @@ async function main() {
       required: ['pump', 'value'],
     },
     async ({ pump, value }) => {
+      // Automatically turn on the pump when setting speed
+      await apiCall('POST', `/api/hardware/pump/${pump}/power`, { on: true });
       await apiCall('POST', `/api/hardware/pump/${pump}/speed`, { value });
-      return `Pump ${pump} speed set to ${value}%.`;
+      return `Pump ${pump} turned on with speed set to ${value}%.`;
     }
   );
 
