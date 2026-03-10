@@ -222,6 +222,32 @@ async function main() {
     }
   );
 
+  // ── Brew timer ────────────────────────────────────────────────────────
+
+  bruce.registerFunction(
+    'control_timer',
+    'Start, stop, or reset the brew timer. Use "start" to begin timing, "stop" to pause, "reset" to zero it out.',
+    {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['start', 'stop', 'reset'], description: 'Timer action' },
+      },
+      required: ['action'],
+    },
+    async ({ action }) => {
+      const res = await apiCall('POST', '/api/hardware/timer', { action });
+      console.log('[Bruce] Timer API response:', JSON.stringify(res));
+      const secs = res?.timer?.seconds ?? 0;
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      const timeStr = h > 0 ? `${h} hours ${m} minutes ${s} seconds` : m > 0 ? `${m} minutes ${s} seconds` : `${s} seconds`;
+      if (action === 'reset') return 'Brew timer reset to zero.';
+      if (action === 'stop') return `Brew timer stopped at ${timeStr}.`;
+      return `Brew timer started at ${timeStr}.`;
+    }
+  );
+
   // ── Logging ─────────────────────────────────────────────────────────────
 
   bruce.on('ready', () => console.log('[Bruce] Ready — listening for wake word'));

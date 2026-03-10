@@ -21,6 +21,7 @@ const HLT_MAX_WATTS = 5000;
 
 function BrewingPanel() {
   const [states, setStates] = useState(brewSystem.getAllStates());
+  const [timerState, setTimerState] = useState({ running: false, seconds: 0 });
   const [regulationConfig, setRegulationConfig] = useState(DEFAULT_REG_CONFIG);
   const [maxWatts, setMaxWatts] = useState(11000);
   const [priorityPot, setPriorityPot] = useState('BK');
@@ -79,6 +80,7 @@ function BrewingPanel() {
               P2: { ...prev.pumps.P2, ...state.controlState.pumps.P2 },
             },
           }));
+          if (state.timer) setTimerState(state.timer);
         }
       } else {
         setStates(brewSystem.getAllStates());
@@ -241,7 +243,7 @@ function BrewingPanel() {
           pumpState={states.pumps.P1}
           onUpdate={(updates) => handlePumpUpdate('P1', updates)}
         />
-        <BrewTimer />
+        <BrewTimer timerState={timerState} isProduction={isProduction} />
         <PumpCard
           name="Pump 2"
           pumpState={states.pumps.P2}

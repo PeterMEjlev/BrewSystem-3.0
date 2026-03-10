@@ -1,35 +1,66 @@
 import { useState, useEffect, useRef } from 'react';
 import styles from './BrewTimer.module.css';
 
-function BrewTimer() {
-  const [time, setTime] = useState(0); // seconds
+const postTimer = async (action) => {
+  try {
+    await fetch('/api/hardware/timer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+  } catch { /* ignore */ }
+};
+
+function BrewTimer({ timerState, isProduction }) {
+  const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const intervalRef = useRef(null);
   const longPressTimerRef = useRef(null);
+  // Track whether the last change came from a local click (to avoid poll overwrite)
+  const localActionRef = useRef(false);
 
+  // Sync from backend poll — only apply if we didn't just act locally
   useEffect(() => {
+    if (!isProduction || !timerState) return;
+    if (localActionRef.current) {
+      localActionRef.current = false;
+      return;
+    }
+    setTime(timerState.seconds);
+    setIsRunning(timerState.running);
+  }, [isProduction, timerState]);
+
+  // Local tick — only in dev mode (production uses backend poll for time)
+  useEffect(() => {
+    if (isProduction) return;
+
     if (isRunning) {
       intervalRef.current = setInterval(() => {
         setTime((t) => t + 1);
       }, 1000);
     } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isRunning]);
+  }, [isRunning, isProduction]);
 
   const handleToggle = () => {
-    setIsRunning((prev) => !prev);
+    localActionRef.current = true;
+    if (isRunning) {
+      if (isProduction) postTimer('stop');
+      setIsRunning(false);
+    } else {
+      if (isProduction) postTimer('start');
+      setIsRunning(true);
+    }
   };
 
   const handleReset = () => {
+    localActionRef.current = true;
+    if (isProduction) postTimer('reset');
     setIsRunning(false);
     setTime(0);
   };
@@ -38,7 +69,7 @@ function BrewTimer() {
     e.preventDefault();
     longPressTimerRef.current = setTimeout(() => {
       handleReset();
-    }, 800); // 800ms hold to reset
+    }, 800);
   };
 
   const cancelLongPress = () => {
@@ -54,7 +85,6 @@ function BrewTimer() {
 
   const handlePointerUp = () => {
     if (longPressTimerRef.current) {
-      // If long press timer is still active, it was a short click
       cancelLongPress();
       handleToggle();
     }

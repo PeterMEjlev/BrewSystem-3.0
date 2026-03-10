@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Any
@@ -66,6 +67,20 @@ app = FastAPI(title="Brew System API", lifespan=lifespan)
 # Path to config file
 CONFIG_FILE = Path(__file__).parent.parent / "config.json"
 DEFAULT_CONFIG_FILE = Path(__file__).parent.parent / "config.default.json"
+
+# Brew timer state — elapsed is in seconds, started_at is a monotonic timestamp
+_timer_state: Dict[str, Any] = {
+    "running": False,
+    "elapsed": 0.0,      # accumulated seconds while stopped
+    "started_at": None,   # time.monotonic() when last started
+}
+
+def _get_timer_seconds() -> int:
+    """Return the current timer value in whole seconds."""
+    elapsed = _timer_state["elapsed"]
+    if _timer_state["running"] and _timer_state["started_at"] is not None:
+        elapsed += time.monotonic() - _timer_state["started_at"]
+    return int(elapsed)
 
 # Shared control state — the single source of truth for all connected clients
 _control_state: Dict[str, Any] = {
@@ -175,6 +190,9 @@ async def update_settings(settings: Settings) -> Dict[str, str]:
 
 
 # ─── Hardware endpoints ────────────────────────────────────────────────────────
+
+class TimerActionRequest(BaseModel):
+    action: str  # "start", "stop", "reset"
 
 class PotPowerRequest(BaseModel):
     on: bool
@@ -317,13 +335,39 @@ async def set_pot_regulation(pot: str, body: PotRegulationRequest) -> Dict[str, 
     return {"status": "ok"}
 
 
+@app.post("/api/hardware/timer")
+async def control_timer(body: TimerActionRequest) -> Dict[str, Any]:
+    """Start, stop, or reset the brew timer"""
+    action = body.action.lower()
+    if action == "start":
+        if not _timer_state["running"]:
+            _timer_state["started_at"] = time.monotonic()
+            _timer_state["running"] = True
+    elif action == "stop":
+        if _timer_state["running"]:
+            _timer_state["elapsed"] += time.monotonic() - _timer_state["started_at"]
+            _timer_state["started_at"] = None
+            _timer_state["running"] = False
+    elif action == "reset":
+        _timer_state["running"] = False
+        _timer_state["elapsed"] = 0.0
+        _timer_state["started_at"] = None
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use start, stop, or reset.")
+    return {"status": "ok", "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds()}}
+
+
 @app.get("/api/hardware/state")
 async def get_full_state() -> Dict[str, Any]:
-    """Return temperatures and control state in a single response"""
+    """Return temperatures, control state, and timer in a single response"""
     config = read_config()
     sensors = config["sensors"]["ds18b20"]
     temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
-    return {"temperatures": temps, "controlState": _control_state}
+    return {
+        "temperatures": temps,
+        "controlState": _control_state,
+        "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds()},
+    }
 
 
 @app.get("/api/hardware/temperature")
