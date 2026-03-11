@@ -141,6 +141,7 @@ function BrewTimer({ timerState, isProduction }) {
   const handlePointerDown = (e) => {
     e.preventDefault();
     longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
       handleReset();
     }, 800);
   };
