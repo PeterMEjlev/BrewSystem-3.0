@@ -226,15 +226,34 @@ async function main() {
 
   bruce.registerFunction(
     'control_timer',
-    'Start, stop, or reset the brew timer. Use "start" to begin timing, "stop" to pause, "reset" to zero it out.',
+    'Start, stop, or reset the brew timer. Use "start" to begin a stopwatch, "stop" to pause, "reset" to zero it out. To start a countdown timer from a specific duration, use "start" and provide hours/minutes/seconds (e.g. "start the timer from 60 minutes" or "start the timer at 2 minutes and 40 seconds").',
     {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['start', 'stop', 'reset'], description: 'Timer action' },
+        hours: { type: 'number', description: 'Countdown hours (optional, only used with start)' },
+        minutes: { type: 'number', description: 'Countdown minutes (optional, only used with start)' },
+        seconds: { type: 'number', description: 'Countdown seconds (optional, only used with start)' },
       },
       required: ['action'],
     },
-    async ({ action }) => {
+    async ({ action, hours = 0, minutes = 0, seconds = 0 }) => {
+      const totalSeconds = Math.round(hours * 3600 + minutes * 60 + seconds);
+
+      // If starting with a duration, set the countdown target first
+      if (action === 'start' && totalSeconds > 0) {
+        await apiCall('POST', '/api/hardware/timer', { action: 'set', seconds: totalSeconds });
+        await apiCall('POST', '/api/hardware/timer', { action: 'start' });
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        const s = totalSeconds % 60;
+        const parts = [];
+        if (h > 0) parts.push(`${h} hour${h !== 1 ? 's' : ''}`);
+        if (m > 0) parts.push(`${m} minute${m !== 1 ? 's' : ''}`);
+        if (s > 0) parts.push(`${s} second${s !== 1 ? 's' : ''}`);
+        return `Countdown timer started from ${parts.join(' and ')}.`;
+      }
+
       const res = await apiCall('POST', '/api/hardware/timer', { action });
       console.log('[Bruce] Timer API response:', JSON.stringify(res));
       const secs = res?.timer?.seconds ?? 0;
