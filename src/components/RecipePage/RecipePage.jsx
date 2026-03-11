@@ -6,7 +6,12 @@ function RecipePage() {
   const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false });
 
   const [recipes, setRecipes] = useState([]);
-  const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [selectedRecipe, setSelectedRecipe] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('selectedRecipe');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -70,6 +75,7 @@ function RecipePage() {
       }
       const data = await response.json();
       setSelectedRecipe(data);
+      try { sessionStorage.setItem('selectedRecipe', JSON.stringify(data)); } catch {}
     } catch (err) {
       console.error('Error fetching recipe:', err);
       setError(err.message);
@@ -80,6 +86,7 @@ function RecipePage() {
 
   const goBack = () => {
     setSelectedRecipe(null);
+    sessionStorage.removeItem('selectedRecipe');
     setError(null);
   };
 
@@ -218,7 +225,7 @@ function RecipePage() {
 
         {recipe.fermentables.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Fermentables</h3>
+            <h3 className={styles.sectionTitle}>🌾 Fermentables</h3>
             <div className={styles.ingredientList}>
               {recipe.fermentables.map((f, i) => (
                 <div key={i} className={styles.ingredientRow}>
@@ -235,7 +242,7 @@ function RecipePage() {
 
         {recipe.hops.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Hops</h3>
+            <h3 className={styles.sectionTitle}>🌿 Hops</h3>
             <div className={styles.ingredientList}>
               {recipe.hops.map((h, i) => (
                 <div key={i} className={styles.ingredientRow}>
@@ -254,7 +261,7 @@ function RecipePage() {
 
         {recipe.yeast.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Yeast</h3>
+            <h3 className={styles.sectionTitle}>🧫 Yeast</h3>
             <div className={styles.ingredientList}>
               {recipe.yeast.map((y, i) => (
                 <div key={i} className={styles.ingredientRow}>
