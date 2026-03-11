@@ -53,11 +53,6 @@
 
 .segment.scrollable {
   cursor: ns-resize;
-  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
-}
-
-.segment.scrollable:hover {
-  background: color-mix(in srgb, var(--color-text-primary) 15%, transparent);
 }
 
 .colon {
