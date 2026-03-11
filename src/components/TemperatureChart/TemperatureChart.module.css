@@ -20,17 +20,52 @@
   margin: 0;
 }
 
-.sliderRow {
+.controlsRow {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.slider {
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   flex: 1;
-  accent-color: var(--color-text-muted);
+  min-width: 0;
+}
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: var(--slider-height);
+  border-radius: var(--radius-md);
+  outline: none;
   cursor: pointer;
-  height: 6px;
+  touch-action: none;
+  min-width: 0;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 5px;
+  height: 50px;
+  border-radius: 10%;
+  background: rgba(255, 255, 255, 0);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0);
+  border: 3px solid #0f172a00;
+}
+
+.slider::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  border: 3px solid var(--color-bg-primary);
 }
 
 .windowLabel {
@@ -44,7 +79,7 @@
 .toggles {
   display: flex;
   gap: 12px;
-  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .toggleBtn {
