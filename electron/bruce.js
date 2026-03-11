@@ -267,6 +267,27 @@ async function main() {
     }
   );
 
+  // ── Power draw ─────────────────────────────────────────────────────────
+
+  const BK_MAX_WATTS = 8500;
+  const HLT_MAX_WATTS = 5000;
+
+  bruce.registerFunction(
+    'get_power_draw',
+    'Get the current power draw (watts) of the system, broken down by BK and HLT.',
+    { type: 'object', properties: {}, required: [] },
+    async () => {
+      const state = await apiCall('GET', '/api/hardware/state');
+      const pots = state.controlState?.pots || {};
+      const bk = pots.BK || {};
+      const hlt = pots.HLT || {};
+      const bkWatts = bk.heaterOn ? Math.round((bk.efficiency / 100) * BK_MAX_WATTS) : 0;
+      const hltWatts = hlt.heaterOn ? Math.round((hlt.efficiency / 100) * HLT_MAX_WATTS) : 0;
+      const total = bkWatts + hltWatts;
+      return `Total power draw: ${total.toLocaleString()} watts. BK: ${bkWatts.toLocaleString()} W, HLT: ${hltWatts.toLocaleString()} W.`;
+    }
+  );
+
   // ── Logging ─────────────────────────────────────────────────────────────
 
   bruce.on('ready', () => console.log('[Bruce] Ready — listening for wake word'));
