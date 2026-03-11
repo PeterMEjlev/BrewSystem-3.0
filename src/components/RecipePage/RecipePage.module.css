@@ -1,0 +1,199 @@
+.recipePanel {
+  padding: 24px;
+  overflow-y: auto;
+  height: 100%;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+}
+
+.recipePanel:active {
+  cursor: grabbing;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.refreshBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.refreshBtn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-light);
+}
+
+.refreshBtn:active {
+  transform: scale(0.95);
+}
+
+.loading {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  padding: 20px;
+}
+
+.errorCard {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  text-align: center;
+}
+
+.error {
+  color: var(--color-vessel-bk);
+  font-size: var(--font-size-base);
+  margin: 0 0 16px 0;
+}
+
+.retryBtn {
+  padding: 10px 24px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  background: transparent;
+  border: 2px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.retryBtn:hover {
+  border-color: var(--color-accent-blue);
+  color: var(--color-accent-blue);
+}
+
+.retryBtn:active {
+  transform: scale(0.98);
+}
+
+/* Recipe Name Card */
+.nameCard {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.recipeName {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 6px 0;
+}
+
+.recipeStyle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Stats Grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.statCard {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  box-shadow: var(--shadow-card);
+}
+
+.statLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.statValue {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+}
+
+/* Ingredient Sections */
+.section {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.sectionTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 14px 0;
+}
+
+.ingredientList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ingredientRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-md);
+  gap: 16px;
+}
+
+.ingredientName {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hopAa {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-normal);
+}
+
+.ingredientDetail {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}

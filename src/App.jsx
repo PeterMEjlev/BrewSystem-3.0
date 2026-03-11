@@ -3,6 +3,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import BottomNav from './components/BottomNav/BottomNav';
 import BrewingPanel from './components/BrewingPanel/BrewingPanel';
 import TemperatureChart from './components/TemperatureChart/TemperatureChart';
+import RecipePage from './components/RecipePage/RecipePage';
 import Settings from './components/Settings/Settings';
 import './App.css';
 
@@ -19,6 +20,7 @@ function App() {
           <div style={{ display: activePanel === 'chart' ? 'contents' : 'none' }}>
             <TemperatureChart />
           </div>
+          {activePanel === 'recipe' && <RecipePage />}
           {activePanel === 'settings' && <Settings />}
         </main>
         <BottomNav activePanel={activePanel} onPanelChange={setActivePanel} />

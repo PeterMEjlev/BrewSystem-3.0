@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -16,6 +18,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import utils_rpi
 from session_logger import session_logger
+
+# Load environment variables from .env file
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Suppress high-frequency polling endpoints from the access log
 class _SuppressPollingFilter(logging.Filter):
@@ -432,6 +437,116 @@ async def get_temperatures() -> Dict[str, Any]:
     config = read_config()
     sensors = config["sensors"]["ds18b20"]
     return await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
+
+
+# ─── Brewer's Friend recipe endpoint ──────────────────────────────────────────
+
+BREWERSFRIEND_API_BASE = "https://api.brewersfriend.com/v1"
+
+
+@app.get("/api/recipe/latest")
+async def get_latest_recipe() -> Dict[str, Any]:
+    """Fetch the most recently created recipe from Brewer's Friend."""
+    api_key = os.getenv("BREWERSFRIEND_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=500, detail="BREWERSFRIEND_API_KEY not configured in .env")
+
+    headers = {"X-API-Key": api_key}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        # Fetch latest recipe (sorted by created_at descending, with ingredients)
+        resp = await client.get(
+            f"{BREWERSFRIEND_API_BASE}/recipes",
+            headers=headers,
+            params={"sort": "created_at:-1", "limit": 1, "ingredients": "true"},
+        )
+        if resp.status_code == 401:
+            raise HTTPException(status_code=401, detail="Invalid Brewer's Friend API key")
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Brewer's Friend API error: {resp.text}")
+
+        data = resp.json()
+        recipes = data.get("recipes", [])
+        if not recipes:
+            raise HTTPException(status_code=404, detail="No recipes found on your Brewer's Friend account")
+
+        recipe = recipes[0]
+
+        # Extract the fields we care about
+        return {
+            "name": recipe.get("title", ""),
+            "style": recipe.get("stylename", ""),
+            "og": recipe.get("og", ""),
+            "fg": recipe.get("fg", ""),
+            "abv": recipe.get("abv", ""),
+            "ibu": recipe.get("ibutinseth", ""),
+            "ebc": recipe.get("srm_ebc", recipe.get("srmmorey_ebc", "")),
+            "mashTemp": _extract_mash_temp(recipe),
+            "fermentables": _extract_fermentables(recipe),
+            "hops": _extract_hops(recipe),
+            "yeast": _extract_yeast(recipe),
+        }
+
+
+def _extract_mash_temp(recipe: Dict) -> Optional[str]:
+    """Pull the main mash temperature from the recipe."""
+    # Check mash steps first
+    mash_steps = recipe.get("mashsteps", [])
+    if mash_steps:
+        # Find the longest step (typically the saccharification rest)
+        main_step = max(mash_steps, key=lambda s: float(s.get("steptime", 0) or 0))
+        temp = main_step.get("steptemp")
+        unit = main_step.get("steptempunit", "C")
+        if temp:
+            return f"{temp}\u00b0{unit}"
+    # Fallback: check recipe-level mash temp
+    mash_temp = recipe.get("mashtemp")
+    if mash_temp:
+        return f"{mash_temp}\u00b0C"
+    return None
+
+
+def _extract_fermentables(recipe: Dict) -> list:
+    """Extract fermentable ingredients from the recipe."""
+    fermentables = recipe.get("fermentables", [])
+    return [
+        {
+            "name": f.get("name", ""),
+            "amount": f.get("amount", ""),
+            "unit": f.get("unit", ""),
+            "percent": f.get("perc", ""),
+        }
+        for f in fermentables
+    ]
+
+
+def _extract_hops(recipe: Dict) -> list:
+    """Extract hop ingredients from the recipe."""
+    hops = recipe.get("hops", [])
+    return [
+        {
+            "name": h.get("name", ""),
+            "amount": h.get("amount", ""),
+            "unit": h.get("unit", ""),
+            "use": h.get("use", ""),
+            "time": h.get("time", ""),
+            "aa": h.get("aa", ""),
+        }
+        for h in hops
+    ]
+
+
+def _extract_yeast(recipe: Dict) -> list:
+    """Extract yeast from the recipe."""
+    yeasts = recipe.get("yeasts", [])
+    return [
+        {
+            "name": y.get("name", ""),
+            "lab": y.get("lab", ""),
+            "attenuation": y.get("attenuation", ""),
+        }
+        for y in yeasts
+    ]
 
 
 # Serve React build
