@@ -5,6 +5,7 @@ import os
 import tempfile
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -380,6 +381,48 @@ async def get_full_state() -> Dict[str, Any]:
         "temperatures": temps,
         "controlState": _control_state,
         "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]},
+    }
+
+
+@app.get("/api/temperature/average")
+async def get_temperature_average(pot: str, minutes: float) -> Dict[str, Any]:
+    """Return the average temperature of a pot over the last N minutes of session history."""
+    pot = pot.lower()
+    if pot not in ("bk", "mlt", "hlt"):
+        raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}. Must be bk, mlt, or hlt.")
+    if minutes <= 0:
+        raise HTTPException(status_code=400, detail="minutes must be positive.")
+
+    history = session_logger.get_history()
+    if not history:
+        return {"pot": pot.upper(), "average": None, "minutes_requested": minutes, "minutes_available": 0, "sample_count": 0}
+
+    now = datetime.now()
+    cutoff = now - timedelta(minutes=minutes)
+
+    # Find the actual time span of available data
+    first_ts = datetime.fromisoformat(history[0]["timestamp"])
+    available_minutes = (now - first_ts).total_seconds() / 60
+
+    # Filter readings within the requested window
+    readings = []
+    for row in history:
+        ts = datetime.fromisoformat(row["timestamp"])
+        if ts >= cutoff:
+            val = row.get(pot)
+            if val is not None:
+                readings.append(val)
+
+    if not readings:
+        return {"pot": pot.upper(), "average": None, "minutes_requested": minutes, "minutes_available": round(available_minutes, 1), "sample_count": 0}
+
+    avg = sum(readings) / len(readings)
+    return {
+        "pot": pot.upper(),
+        "average": round(avg, 2),
+        "minutes_requested": minutes,
+        "minutes_available": round(available_minutes, 1),
+        "sample_count": len(readings),
     }
 
 

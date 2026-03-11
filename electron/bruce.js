@@ -288,6 +288,37 @@ async function main() {
     }
   );
 
+  // ── Average temperature ────────────────────────────────────────────────
+
+  bruce.registerFunction(
+    'get_average_temperature',
+    'Get the average temperature of a specific pot (BK, MLT, or HLT) over the last N minutes. If the requested time range exceeds available session data, the response will include the actual available range and the average will be computed over that range instead.',
+    {
+      type: 'object',
+      properties: {
+        pot: { type: 'string', enum: ['BK', 'MLT', 'HLT'], description: 'Which pot to get the average temperature for' },
+        minutes: { type: 'number', description: 'Number of minutes to look back (e.g. 5 for last 5 minutes)' },
+      },
+      required: ['pot', 'minutes'],
+    },
+    async ({ pot, minutes }) => {
+      const res = await apiCall('GET', `/api/temperature/average?pot=${pot}&minutes=${minutes}`);
+
+      if (res.average == null) {
+        if (res.minutes_available === 0) return 'No temperature data available yet for this session.';
+        return `No ${pot} readings found in the last ${minutes} minute${minutes !== 1 ? 's' : ''}.`;
+      }
+
+      const capped = minutes > res.minutes_available;
+      const rangeUsed = capped ? res.minutes_available : minutes;
+      let reply = `The average ${pot} temperature over the last ${rangeUsed} minute${rangeUsed !== 1 ? 's' : ''} is ${res.average.toFixed(1)}°C (based on ${res.sample_count} readings).`;
+      if (capped) {
+        reply += ` Note: only ${res.minutes_available} minutes of session data were available, so that's the range used.`;
+      }
+      return reply;
+    }
+  );
+
   // ── Reminders ──────────────────────────────────────────────────────────
 
   const reminders = new Map();
