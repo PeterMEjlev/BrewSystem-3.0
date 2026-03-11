@@ -364,23 +364,25 @@ function TemperatureChart() {
 
         <div className={styles.controlsRow}>
           <div className={styles.sliderRow}>
-            <input
-              type="range"
-              min={5}
-              max={WINDOW_MAX}
-              step={1}
-              value={windowMinutes}
-              onChange={(e) => setWindowMinutes(Number(e.target.value))}
-              className={styles.slider}
-              style={{
-                background: `linear-gradient(to right,
-                  var(--color-text-muted) 0%,
-                  var(--color-text-muted) ${((windowMinutes - 5) / (WINDOW_MAX - 5)) * 100}%,
-                  var(--color-border-light) ${((windowMinutes - 5) / (WINDOW_MAX - 5)) * 100}%,
-                  var(--color-border-light) 100%)`,
-              }}
-            />
-            <span className={styles.windowLabel}>{windowLabel}</span>
+            <div className={styles.sliderWrapper}>
+              <input
+                type="range"
+                min={5}
+                max={WINDOW_MAX}
+                step={1}
+                value={windowMinutes}
+                onChange={(e) => setWindowMinutes(Number(e.target.value))}
+                className={styles.slider}
+                style={{
+                  background: `linear-gradient(to right,
+                    var(--color-text-muted) 0%,
+                    var(--color-text-muted) ${((windowMinutes - 5) / (WINDOW_MAX - 5)) * 100}%,
+                    var(--color-border-light) ${((windowMinutes - 5) / (WINDOW_MAX - 5)) * 100}%,
+                    var(--color-border-light) 100%)`,
+                }}
+              />
+              <span className={styles.windowLabel}>{windowLabel}</span>
+            </div>
           </div>
 
           <div className={styles.toggles}>
