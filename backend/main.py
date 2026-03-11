@@ -6,7 +6,7 @@ import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -73,14 +73,18 @@ _timer_state: Dict[str, Any] = {
     "running": False,
     "elapsed": 0.0,      # accumulated seconds while stopped
     "started_at": None,   # time.monotonic() when last started
+    "target": 0,          # countdown target in seconds (0 = stopwatch mode)
 }
 
 def _get_timer_seconds() -> int:
-    """Return the current timer value in whole seconds."""
+    """Return the current timer display value in whole seconds."""
     elapsed = _timer_state["elapsed"]
     if _timer_state["running"] and _timer_state["started_at"] is not None:
         elapsed += time.monotonic() - _timer_state["started_at"]
-    return int(elapsed)
+    elapsed = int(elapsed)
+    if _timer_state["target"] > 0:
+        return max(_timer_state["target"] - elapsed, 0)
+    return elapsed
 
 # Shared control state — the single source of truth for all connected clients
 _control_state: Dict[str, Any] = {
@@ -192,7 +196,8 @@ async def update_settings(settings: Settings) -> Dict[str, str]:
 # ─── Hardware endpoints ────────────────────────────────────────────────────────
 
 class TimerActionRequest(BaseModel):
-    action: str  # "start", "stop", "reset"
+    action: str  # "start", "stop", "reset", "set"
+    seconds: Optional[int] = None  # target seconds for "set" action
 
 class PotPowerRequest(BaseModel):
     on: bool
@@ -352,9 +357,17 @@ async def control_timer(body: TimerActionRequest) -> Dict[str, Any]:
         _timer_state["running"] = False
         _timer_state["elapsed"] = 0.0
         _timer_state["started_at"] = None
+        _timer_state["target"] = 0
+    elif action == "set":
+        if body.seconds is None or body.seconds < 0:
+            raise HTTPException(status_code=400, detail="'set' action requires a non-negative 'seconds' value.")
+        _timer_state["target"] = body.seconds
+        _timer_state["running"] = False
+        _timer_state["elapsed"] = 0.0
+        _timer_state["started_at"] = None
     else:
-        raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use start, stop, or reset.")
-    return {"status": "ok", "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds()}}
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use start, stop, reset, or set.")
+    return {"status": "ok", "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]}}
 
 
 @app.get("/api/hardware/state")
@@ -366,7 +379,7 @@ async def get_full_state() -> Dict[str, Any]:
     return {
         "temperatures": temps,
         "controlState": _control_state,
-        "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds()},
+        "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]},
     }
 
 

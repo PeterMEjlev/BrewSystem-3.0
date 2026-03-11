@@ -14,14 +14,6 @@
   border: 2px solid transparent;
 }
 
-.brewTimer:hover {
-  box-shadow: var(--shadow-hover);
-  transform: translateY(-2px);
-}
-
-.brewTimer:active {
-  transform: scale(0.98);
-}
 
 .brewTimer.running {
   border-color: var(--color-accent-green);
@@ -41,11 +33,35 @@
 }
 
 .timeDisplay {
+  display: flex;
+  align-items: center;
+  gap: 0;
   font-size: var(--font-size-4xl);
   font-weight: var(--font-weight-bold);
   font-family: var(--font-mono);
   color: var(--color-text-primary);
   letter-spacing: 4px;
+}
+
+.segment {
+  display: inline-block;
+  padding: 8px 6px;
+  border-radius: var(--radius-md);
+  transition: var(--transition-fast);
+  touch-action: none;
+}
+
+.segment.scrollable {
+  cursor: ns-resize;
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+}
+
+.segment.scrollable:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 15%, transparent);
+}
+
+.colon {
+  padding: 0 2px;
 }
 
 .statusHint {

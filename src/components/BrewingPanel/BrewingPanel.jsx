@@ -21,7 +21,7 @@ const HLT_MAX_WATTS = 5000;
 
 function BrewingPanel() {
   const [states, setStates] = useState(brewSystem.getAllStates());
-  const [timerState, setTimerState] = useState({ running: false, seconds: 0 });
+  const [timerState, setTimerState] = useState({ running: false, seconds: 0, target: 0 });
   const [regulationConfig, setRegulationConfig] = useState(DEFAULT_REG_CONFIG);
   const [maxWatts, setMaxWatts] = useState(11000);
   const [priorityPot, setPriorityPot] = useState('BK');

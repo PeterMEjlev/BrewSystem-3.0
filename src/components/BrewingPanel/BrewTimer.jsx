@@ -1,51 +1,94 @@
 import { useState, useEffect, useRef } from 'react';
 import styles from './BrewTimer.module.css';
 
-const postTimer = async (action) => {
+const postTimer = async (action, seconds) => {
   try {
+    const body = { action };
+    if (seconds !== undefined) body.seconds = seconds;
     await fetch('/api/hardware/timer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify(body),
     });
   } catch { /* ignore */ }
 };
 
+const DRAG_THRESHOLD = 20; // pixels of vertical drag per tick
+
 function BrewTimer({ timerState, isProduction }) {
-  const [time, setTime] = useState(0);
+  const [displaySeconds, setDisplaySeconds] = useState(0);
+  const [target, setTarget] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef(null);
   const longPressTimerRef = useRef(null);
-  // Track whether the last change came from a local click (to avoid poll overwrite)
   const localActionRef = useRef(false);
 
-  // Sync from backend poll — only apply if we didn't just act locally
+  // Drag state for segment adjustment
+  const dragRef = useRef(null); // { segment, startY, accumulated }
+
+  const canAdjust = !isRunning && displaySeconds === target;
+
+  // Sync from backend poll
   useEffect(() => {
     if (!isProduction || !timerState) return;
     if (localActionRef.current) {
       localActionRef.current = false;
       return;
     }
-    setTime(timerState.seconds);
+    setDisplaySeconds(timerState.seconds);
     setIsRunning(timerState.running);
+    setTarget(timerState.target ?? 0);
   }, [isProduction, timerState]);
 
-  // Local tick — only in dev mode (production uses backend poll for time)
+  // Local tick (dev mode)
   useEffect(() => {
     if (isProduction) return;
-
     if (isRunning) {
       intervalRef.current = setInterval(() => {
-        setTime((t) => t + 1);
+        setElapsed((e) => e + 1);
       }, 1000);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
     }
-
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [isRunning, isProduction]);
+
+  // Update display from elapsed (dev mode)
+  useEffect(() => {
+    if (isProduction) return;
+    if (target > 0) {
+      setDisplaySeconds(Math.max(target - elapsed, 0));
+    } else {
+      setDisplaySeconds(elapsed);
+    }
+  }, [elapsed, target, isProduction]);
+
+  const applySegmentDelta = (segment, delta) => {
+    setTarget((prev) => {
+      const h = Math.floor(prev / 3600);
+      const m = Math.floor((prev % 3600) / 60);
+      const s = prev % 60;
+
+      let newH = h, newM = m, newS = s;
+      if (segment === 'h') newH = ((h + delta) % 61 + 61) % 61;
+      if (segment === 'm') newM = ((m + delta) % 61 + 61) % 61;
+      if (segment === 's') newS = ((s + delta) % 61 + 61) % 61;
+
+      const newTarget = newH * 3600 + newM * 60 + newS;
+      setDisplaySeconds(newTarget);
+      setElapsed(0);
+
+      if (isProduction) {
+        localActionRef.current = true;
+        postTimer('set', newTarget);
+      }
+
+      return newTarget;
+    });
+  };
 
   const handleToggle = () => {
     localActionRef.current = true;
@@ -62,14 +105,52 @@ function BrewTimer({ timerState, isProduction }) {
     localActionRef.current = true;
     if (isProduction) postTimer('reset');
     setIsRunning(false);
-    setTime(0);
+    setElapsed(0);
+    setTarget(0);
+    setDisplaySeconds(0);
   };
 
-  const startLongPress = (e) => {
+  // Segment pointer handlers — drag up to increment, drag down to decrement
+  const handleSegmentPointerDown = (segment, e) => {
+    if (!canAdjust) return;
+    e.stopPropagation();
+    e.preventDefault();
+    e.target.setPointerCapture(e.pointerId);
+    dragRef.current = { segment, startY: e.clientY, accumulated: 0 };
+  };
+
+  const handleSegmentPointerMove = (e) => {
+    if (!dragRef.current) return;
+    e.stopPropagation();
+    const dy = dragRef.current.startY - e.clientY; // positive = dragged up
+    const ticks = Math.trunc((dy - dragRef.current.accumulated) / DRAG_THRESHOLD);
+    if (ticks !== 0) {
+      dragRef.current.accumulated += ticks * DRAG_THRESHOLD;
+      applySegmentDelta(dragRef.current.segment, ticks);
+    }
+  };
+
+  const handleSegmentPointerUp = (e) => {
+    if (!dragRef.current) return;
+    e.stopPropagation();
+    e.target.releasePointerCapture(e.pointerId);
+    dragRef.current = null;
+  };
+
+  // Card-level pointer handlers for tap (toggle) and hold (reset)
+  const handlePointerDown = (e) => {
     e.preventDefault();
     longPressTimerRef.current = setTimeout(() => {
       handleReset();
     }, 800);
+  };
+
+  const handlePointerUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+      handleToggle();
+    }
   };
 
   const cancelLongPress = () => {
@@ -79,23 +160,25 @@ function BrewTimer({ timerState, isProduction }) {
     }
   };
 
-  const handlePointerDown = (e) => {
-    startLongPress(e);
+  const h = Math.floor(displaySeconds / 3600);
+  const m = Math.floor((displaySeconds % 3600) / 60);
+  const s = displaySeconds % 60;
+
+  const mode = target > 0 ? 'Timer' : 'Stopwatch';
+
+  const getHint = () => {
+    if (canAdjust) return 'Drag to Set • Tap to Start';
+    if (isRunning) return 'Tap to Pause • Hold to Reset';
+    return 'Tap to Resume • Hold to Reset';
   };
 
-  const handlePointerUp = () => {
-    if (longPressTimerRef.current) {
-      cancelLongPress();
-      handleToggle();
-    }
-  };
-
-  const formatTime = (seconds) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
+  const segmentProps = (segment) => ({
+    className: `${styles.segment} ${canAdjust ? styles.scrollable : ''}`,
+    onPointerDown: (e) => handleSegmentPointerDown(segment, e),
+    onPointerMove: handleSegmentPointerMove,
+    onPointerUp: handleSegmentPointerUp,
+    onPointerCancel: handleSegmentPointerUp,
+  });
 
   return (
     <div
@@ -105,11 +188,15 @@ function BrewTimer({ timerState, isProduction }) {
       onPointerLeave={cancelLongPress}
       onPointerCancel={cancelLongPress}
     >
-      <div className={styles.label}>Brew Timer</div>
-      <div className={styles.timeDisplay}>{formatTime(time)}</div>
-      <div className={styles.statusHint}>
-        {isRunning ? 'Tap to Pause • Hold to Reset' : 'Tap to Start • Hold to Reset'}
+      <div className={styles.label}>Brew {mode}</div>
+      <div className={styles.timeDisplay}>
+        <div {...segmentProps('h')}>{String(h).padStart(2, '0')}</div>
+        <span className={styles.colon}>:</span>
+        <div {...segmentProps('m')}>{String(m).padStart(2, '0')}</div>
+        <span className={styles.colon}>:</span>
+        <div {...segmentProps('s')}>{String(s).padStart(2, '0')}</div>
       </div>
+      <div className={styles.statusHint}>{getHint()}</div>
     </div>
   );
 }
