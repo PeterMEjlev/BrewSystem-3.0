@@ -444,21 +444,69 @@ async def get_temperatures() -> Dict[str, Any]:
 BREWERSFRIEND_API_BASE = "https://api.brewersfriend.com/v1"
 
 
-@app.get("/api/recipe/latest")
-async def get_latest_recipe() -> Dict[str, Any]:
-    """Fetch the most recently created recipe from Brewer's Friend."""
+def _get_api_key() -> str:
     api_key = os.getenv("BREWERSFRIEND_API_KEY", "").strip()
     if not api_key:
         raise HTTPException(status_code=500, detail="BREWERSFRIEND_API_KEY not configured in .env")
+    return api_key
 
+
+@app.get("/api/recipes")
+async def get_recipes() -> Dict[str, Any]:
+    """Fetch all recipes from Brewer's Friend (without ingredients for speed)."""
+    api_key = _get_api_key()
+    headers = {"X-API-Key": api_key}
+
+    all_recipes = []
+    offset = 0
+    limit = 100  # max allowed by the API
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        while True:
+            resp = await client.get(
+                f"{BREWERSFRIEND_API_BASE}/recipes",
+                headers=headers,
+                params={"sort": "created_at:-1", "limit": limit, "offset": offset},
+            )
+            if resp.status_code == 401:
+                raise HTTPException(status_code=401, detail="Invalid Brewer's Friend API key")
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=f"Brewer's Friend API error: {resp.text}")
+
+            data = resp.json()
+            batch = data.get("recipes", [])
+            if not batch:
+                break
+
+            for r in batch:
+                all_recipes.append({
+                    "id": r.get("id"),
+                    "name": r.get("title", ""),
+                    "style": r.get("stylename", ""),
+                    "abv": r.get("abv", ""),
+                    "ibu": r.get("ibutinseth", ""),
+                    "ebc": r.get("srmecbmorey", ""),
+                    "createdAt": r.get("created_at", ""),
+                })
+
+            if len(batch) < limit:
+                break
+            offset += limit
+
+    return {"recipes": all_recipes}
+
+
+@app.get("/api/recipes/{recipe_id}")
+async def get_recipe(recipe_id: int) -> Dict[str, Any]:
+    """Fetch a single recipe with full ingredients from Brewer's Friend."""
+    api_key = _get_api_key()
     headers = {"X-API-Key": api_key}
 
     async with httpx.AsyncClient(timeout=15) as client:
-        # Fetch latest recipe (sorted by created_at descending, with ingredients)
         resp = await client.get(
             f"{BREWERSFRIEND_API_BASE}/recipes",
             headers=headers,
-            params={"sort": "created_at:-1", "limit": 1, "ingredients": "true"},
+            params={"id": recipe_id, "ingredients": "true"},
         )
         if resp.status_code == 401:
             raise HTTPException(status_code=401, detail="Invalid Brewer's Friend API key")
@@ -468,12 +516,12 @@ async def get_latest_recipe() -> Dict[str, Any]:
         data = resp.json()
         recipes = data.get("recipes", [])
         if not recipes:
-            raise HTTPException(status_code=404, detail="No recipes found on your Brewer's Friend account")
+            raise HTTPException(status_code=404, detail="Recipe not found")
 
         recipe = recipes[0]
 
-        # Extract the fields we care about
         return {
+            "id": recipe.get("id"),
             "name": recipe.get("title", ""),
             "style": recipe.get("stylename", ""),
             "og": recipe.get("og", ""),

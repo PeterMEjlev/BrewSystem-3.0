@@ -142,6 +142,18 @@
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ebcSwatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
 }
 
 /* Ingredient Sections */
@@ -196,4 +208,105 @@
   font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   white-space: nowrap;
+}
+
+/* Back button */
+.backBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  padding: 8px 0;
+  transition: var(--transition-fast);
+}
+
+.backBtn:hover {
+  color: var(--color-text-primary);
+}
+
+.backBtn:active {
+  transform: scale(0.97);
+}
+
+/* Recipe list */
+.recipeList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recipeListItem {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 20px;
+  background: var(--color-bg-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-align: left;
+  box-shadow: var(--shadow-card);
+}
+
+.recipeListItem:hover {
+  border-color: var(--color-border-light);
+}
+
+.recipeListItem:active {
+  transform: scale(0.99);
+}
+
+.recipeListItem:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.recipeListInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recipeListNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recipeListName {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recipeListStyle {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.recipeListStats {
+  display: flex;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.chevron {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
 }
