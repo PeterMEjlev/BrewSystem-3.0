@@ -288,6 +288,44 @@ async function main() {
     }
   );
 
+  // ── Reminders ──────────────────────────────────────────────────────────
+
+  const reminders = new Map();
+  let reminderId = 0;
+
+  bruce.registerFunction(
+    'set_reminder',
+    'Set a timed reminder. Bruce will speak the reminder after the specified delay. For example "remind me to add hops in 10 minutes" or "remind me to check the mash in 1 hour and 30 minutes".',
+    {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'What to remind the user about' },
+        hours: { type: 'number', description: 'Hours from now (default 0)' },
+        minutes: { type: 'number', description: 'Minutes from now (default 0)' },
+        seconds: { type: 'number', description: 'Seconds from now (default 0)' },
+      },
+      required: ['message'],
+    },
+    async ({ message, hours = 0, minutes = 0, seconds = 0 }) => {
+      const totalMs = Math.round((hours * 3600 + minutes * 60 + seconds) * 1000);
+      if (totalMs <= 0) return 'Please specify a time in the future for the reminder.';
+
+      const id = ++reminderId;
+      const timer = setTimeout(() => {
+        reminders.delete(id);
+        console.log(`[Bruce] Reminder fired: ${message}`);
+        bruce.speak(`[SYSTEM] A scheduled reminder has fired. You MUST say the following reminder out loud to the user, word for word. Do not say anything else, no greetings, no follow-ups. Just deliver the reminder: "${message}"`);
+      }, totalMs);
+      reminders.set(id, { message, timer });
+
+      const parts = [];
+      if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
+      if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
+      if (seconds > 0) parts.push(`${seconds} second${seconds !== 1 ? 's' : ''}`);
+      return `Reminder set: "${message}" in ${parts.join(' and ')}.`;
+    }
+  );
+
   // ── Logging ─────────────────────────────────────────────────────────────
 
   bruce.on('ready', () => console.log('[Bruce] Ready — listening for wake word'));
