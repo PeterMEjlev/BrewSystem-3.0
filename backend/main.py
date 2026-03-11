@@ -480,7 +480,7 @@ async def get_latest_recipe() -> Dict[str, Any]:
             "fg": recipe.get("fg", ""),
             "abv": recipe.get("abv", ""),
             "ibu": recipe.get("ibutinseth", ""),
-            "ebc": recipe.get("srm_ebc", recipe.get("srmmorey_ebc", "")),
+            "ebc": recipe.get("srmecbmorey", ""),
             "mashTemp": _extract_mash_temp(recipe),
             "fermentables": _extract_fermentables(recipe),
             "hops": _extract_hops(recipe),

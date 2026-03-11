@@ -84,6 +84,11 @@ function RecipePage() {
 
   if (!recipe) return null;
 
+  const fmt = (val, decimals) => {
+    const n = parseFloat(val);
+    return isNaN(n) ? val : n.toFixed(decimals);
+  };
+
   return (
     <div
       className={styles.recipePanel}
@@ -114,23 +119,23 @@ function RecipePage() {
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>OG</span>
-          <span className={styles.statValue}>{recipe.og}</span>
+          <span className={styles.statValue}>{fmt(recipe.og, 3)}</span>
         </div>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>FG</span>
-          <span className={styles.statValue}>{recipe.fg}</span>
+          <span className={styles.statValue}>{fmt(recipe.fg, 3)}</span>
         </div>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>ABV</span>
-          <span className={styles.statValue}>{recipe.abv}%</span>
+          <span className={styles.statValue}>{fmt(recipe.abv, 1)}%</span>
         </div>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>IBU</span>
-          <span className={styles.statValue}>{recipe.ibu}</span>
+          <span className={styles.statValue}>{fmt(recipe.ibu, 1)}</span>
         </div>
         <div className={styles.statCard}>
           <span className={styles.statLabel}>EBC</span>
-          <span className={styles.statValue}>{recipe.ebc}</span>
+          <span className={styles.statValue}>{fmt(recipe.ebc, 1)}</span>
         </div>
         {recipe.mashTemp && (
           <div className={styles.statCard}>
