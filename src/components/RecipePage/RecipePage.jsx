@@ -164,6 +164,27 @@ function RecipePage() {
   // ─── Detail view ───────────────────────────────────────────────────────────
   if (selectedRecipe) {
     const recipe = selectedRecipe;
+
+    const toKg = (amt, unit) => {
+      const n = parseFloat(amt);
+      if (isNaN(n)) return 0;
+      const u = (unit || '').toLowerCase();
+      if (u === 'g') return n / 1000;
+      if (u === 'lb' || u === 'lbs') return n * 0.453592;
+      if (u === 'oz') return n * 0.0283495;
+      return n;
+    };
+    const toG = (amt, unit) => {
+      const n = parseFloat(amt);
+      if (isNaN(n)) return 0;
+      const u = (unit || '').toLowerCase();
+      if (u === 'oz') return n * 28.3495;
+      return n;
+    };
+    const totalFermentablesKg = recipe.fermentables.reduce((s, f) => s + toKg(f.amount, f.unit), 0);
+    const totalHopsG = recipe.hops.reduce((s, h) => s + toG(h.amount, h.unit), 0);
+    const hopsGperL = recipe.batchSize ? totalHopsG / recipe.batchSize : null;
+
     return (
       <div
         className={styles.recipePanel}
@@ -215,17 +236,29 @@ function RecipePage() {
               />
             </span>
           </div>
+          {recipe.batchSize != null && (
+            <div className={styles.statCard}>
+              <span className={styles.statLabel}>Batch</span>
+              <span className={styles.statValue}>{recipe.batchSize} L</span>
+            </div>
+          )}
           {recipe.mashTemp && (
             <div className={styles.statCard}>
               <span className={styles.statLabel}>Mash</span>
               <span className={styles.statValue}>{recipe.mashTemp}</span>
             </div>
           )}
+          {recipe.fermentationTemp && (
+            <div className={styles.statCard}>
+              <span className={styles.statLabel}>Ferm.</span>
+              <span className={styles.statValue}>{recipe.fermentationTemp}</span>
+            </div>
+          )}
         </div>
 
         {recipe.fermentables.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>🌾 Fermentables</h3>
+            <h3 className={styles.sectionTitle}>🌾 Fermentables <span className={styles.sectionSubtitle}>{totalFermentablesKg.toFixed(2)} kg</span></h3>
             <div className={styles.ingredientList}>
               {recipe.fermentables.map((f, i) => (
                 <div key={i} className={styles.ingredientRow}>
@@ -242,7 +275,9 @@ function RecipePage() {
 
         {recipe.hops.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>🌿 Hops</h3>
+            <h3 className={styles.sectionTitle}>
+              🌿 Hops <span className={styles.sectionSubtitle}>{totalHopsG.toFixed(1)} g{hopsGperL != null ? ` · ${hopsGperL.toFixed(1)} g/L` : ''}</span>
+            </h3>
             <div className={styles.ingredientList}>
               {recipe.hops.map((h, i) => (
                 <div key={i} className={styles.ingredientRow}>
@@ -267,7 +302,7 @@ function RecipePage() {
                 <div key={i} className={styles.ingredientRow}>
                   <span className={styles.ingredientName}>{y.name}</span>
                   <span className={styles.ingredientDetail}>
-                    {y.lab}
+                    {y.amount && y.amountUnit ? `${y.amount} ${y.amountUnit} | ` : ''}{y.lab}
                     {y.attenuation ? ` | ${y.attenuation}% atten.` : ''}
                   </span>
                 </div>

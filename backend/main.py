@@ -529,7 +529,9 @@ async def get_recipe(recipe_id: int) -> Dict[str, Any]:
             "abv": recipe.get("abv", ""),
             "ibu": recipe.get("ibutinseth", ""),
             "ebc": recipe.get("srmecbmorey", ""),
+            "batchSize": _extract_batch_size_liters(recipe),
             "mashTemp": _extract_mash_temp(recipe),
+            "fermentationTemp": _extract_fermentation_temp(recipe),
             "fermentables": _extract_fermentables(recipe),
             "hops": _extract_hops(recipe),
             "yeast": _extract_yeast(recipe),
@@ -551,6 +553,36 @@ def _extract_mash_temp(recipe: Dict) -> Optional[str]:
     mash_temp = recipe.get("mashtemp")
     if mash_temp:
         return f"{mash_temp}\u00b0C"
+    return None
+
+
+def _extract_batch_size_liters(recipe: Dict) -> Optional[float]:
+    """Return batch size in liters, converting from gallons if needed."""
+    size = recipe.get("batchsize")
+    if size is None:
+        return None
+    try:
+        size = float(size)
+    except (ValueError, TypeError):
+        return None
+    unit = (recipe.get("batchsizeunit") or "l").lower()
+    if unit in ("gal", "gallon", "gallons"):
+        size = round(size * 3.78541, 2)
+    return size
+
+
+def _extract_fermentation_temp(recipe: Dict) -> Optional[str]:
+    """Pull the primary fermentation temperature from the recipe."""
+    steps = recipe.get("fermentationsteps", [])
+    if steps:
+        step = steps[0]
+        temp = step.get("steptemp")
+        unit = step.get("steptempunit", "C")
+        if temp:
+            return f"{temp}\u00b0{unit}"
+    temp = recipe.get("primarytemp") or recipe.get("fermentationtemp")
+    if temp:
+        return f"{temp}\u00b0C"
     return None
 
 
@@ -592,6 +624,8 @@ def _extract_yeast(recipe: Dict) -> list:
             "name": y.get("name", ""),
             "lab": y.get("lab", ""),
             "attenuation": y.get("attenuation", ""),
+            "amount": y.get("amount", ""),
+            "amountUnit": y.get("amountunit", ""),
         }
         for y in yeasts
     ]
