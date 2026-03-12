@@ -24,22 +24,22 @@
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .navItem {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   background: none;
   border: none;
   border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
-  padding: 10px 12px;
+  padding: 14px 14px;
   text-align: left;
   transition: var(--transition-fast);
 }
@@ -65,13 +65,13 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
 }
 
 .icon svg {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
 }
 
 /* Divider */
