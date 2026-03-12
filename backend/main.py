@@ -277,17 +277,40 @@ async def set_pot_power(pot: str, body: PotPowerRequest) -> Dict[str, str]:
     return {"status": "ok"}
 
 
+# Max wattage per heating element
+_BK_MAX_WATTS = 8500
+_HLT_MAX_WATTS = 5000
+
+
 @app.post("/api/hardware/pot/{pot}/efficiency")
 async def set_pot_efficiency(pot: str, body: PotEfficiencyRequest) -> Dict[str, str]:
-    """Set heating element PWM duty cycle"""
+    """Set heating element PWM duty cycle, enforcing the system power limit."""
     pot = pot.upper()
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
 
     config = read_config()
+    max_watts = config.get("app", {}).get("max_watts", 11000)
+    other = "HLT" if pot == "BK" else "BK"
+    pot_max = _BK_MAX_WATTS if pot == "BK" else _HLT_MAX_WATTS
+    other_max = _HLT_MAX_WATTS if pot == "BK" else _BK_MAX_WATTS
+
+    # Apply the requested efficiency to this pot
     _, pwm_pin, _ = _pot_pin_map(pot, config)
     _control_state["pots"][pot]["efficiency"] = body.value
     utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)
+
+    # Throttle the other pot if both heaters are on and total power exceeds the limit
+    if _control_state["pots"][other]["heaterOn"]:
+        used_by_this = (body.value / 100) * pot_max if _control_state["pots"][pot]["heaterOn"] else 0
+        headroom = max_watts - used_by_this
+        other_cap = max(0, min(100, (headroom / other_max) * 100))
+        other_eff = _control_state["pots"][other]["efficiency"]
+        if other_eff > other_cap:
+            _, other_pwm, _ = _pot_pin_map(other, config)
+            _control_state["pots"][other]["efficiency"] = other_cap
+            utils_rpi.change_pwm_duty_cycle(other_pwm, other_cap)
+
     return {"status": "ok"}
 
 
