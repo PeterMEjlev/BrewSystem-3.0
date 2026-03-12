@@ -624,10 +624,10 @@ def _extract_yeast(recipe: Dict) -> list:
     return [
         {
             "name": y.get("name", ""),
-            "lab": y.get("lab", ""),
+            "lab": y.get("laboratory", "") or y.get("lab", ""),
             "attenuation": y.get("attenuation", ""),
             "amount": y.get("amount", ""),
-            "amountUnit": y.get("amountunit", ""),
+            "amountUnit": y.get("unit", ""),
         }
         for y in yeasts
     ]
