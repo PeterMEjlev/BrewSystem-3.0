@@ -466,6 +466,35 @@ async function main() {
     }
   );
 
+  bruce.registerFunction(
+    'dilution_calculator',
+    'Calculate how much water to add to wort to reach a target gravity. Requires the current wort volume in litres, the current gravity (OG), and the desired gravity (DG). Gravity can be given as e.g. 1.050 or just 1050. The desired gravity must be lower than the current gravity.',
+    {
+      type: 'object',
+      properties: {
+        volume: { type: 'number', description: 'Current wort volume in litres' },
+        current_gravity: { type: 'number', description: 'Current/original gravity, e.g. 1.050 or 1050' },
+        desired_gravity: { type: 'number', description: 'Target gravity after dilution, e.g. 1.040 or 1040' },
+      },
+      required: ['volume', 'current_gravity', 'desired_gravity'],
+    },
+    async ({ volume, current_gravity, desired_gravity }) => {
+      // Normalise gravity values (accept 1080 as 1.080, 1050 as 1.050, etc.)
+      let og = current_gravity > 1.2 ? current_gravity / 1000 : current_gravity;
+      let dg = desired_gravity > 1.2 ? desired_gravity / 1000 : desired_gravity;
+
+      if (volume <= 0) return 'Volume must be greater than zero.';
+      if (og <= 1) return 'Current gravity must be greater than 1.000.';
+      if (dg <= 1) return 'Desired gravity must be greater than 1.000.';
+      if (dg >= og) return 'Desired gravity must be lower than the current gravity.';
+
+      const newVolume = (volume * (og - 1)) / (dg - 1);
+      const waterToAdd = newVolume - volume;
+
+      return `You need to add ${waterToAdd.toFixed(1)} litres of water. That brings the total volume to ${newVolume.toFixed(1)} litres and the gravity from ${og.toFixed(3)} down to ${dg.toFixed(3)}.`;
+    }
+  );
+
   // ── Logging ─────────────────────────────────────────────────────────────
 
   // Buffer the user transcript so it prints before Bruce's first reply,
