@@ -279,17 +279,27 @@ function RecipePage() {
               🌿 Hops <span className={styles.sectionSubtitle}>{totalHopsG.toFixed(1)} g{hopsGperL != null ? ` · ${hopsGperL.toFixed(1)} g/L` : ''}</span>
             </h3>
             <div className={styles.ingredientList}>
-              {recipe.hops.map((h, i) => (
-                <div key={i} className={styles.ingredientRow}>
-                  <span className={styles.ingredientName}>
-                    {h.name}
-                    {h.aa ? <span className={styles.hopAa}>{h.aa}% AA</span> : ''}
-                  </span>
-                  <span className={styles.ingredientDetail}>
-                    {h.amount} {h.unit} @ {h.time} min ({h.use})
-                  </span>
-                </div>
-              ))}
+              {recipe.hops.map((h, i) => {
+                const useLabel = h.use && h.temp
+                  ? `${h.use} @ ${h.temp}°C`
+                  : (h.use || null);
+                return (
+                  <div key={i} className={styles.hopRow}>
+                    <div className={styles.hopMain}>
+                      <span className={styles.ingredientName}>
+                        {h.name}
+                        {h.aa ? <span className={styles.hopAa}>{h.aa}% AA</span> : ''}
+                      </span>
+                      <span className={styles.hopMeta}>
+                        {h.amount}{h.unit ? ` ${h.unit}` : ''}
+                        {useLabel ? ` · ${useLabel}` : ''}
+                        {h.time != null && h.time !== '' ? ` · ${h.time} min` : ''}
+                      </span>
+                    </div>
+                    {h.ibu ? <span className={styles.hopIbu}>{fmt(h.ibu, 1)} IBU</span> : null}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

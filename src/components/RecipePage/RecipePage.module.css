@@ -213,6 +213,37 @@
   font-weight: var(--font-weight-normal);
 }
 
+.hopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-md);
+  gap: 12px;
+}
+
+.hopMain {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hopMeta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.hopIbu {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .ingredientDetail {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);

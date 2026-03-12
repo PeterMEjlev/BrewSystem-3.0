@@ -608,9 +608,11 @@ def _extract_hops(recipe: Dict) -> list:
             "name": h.get("name", ""),
             "amount": h.get("amount", ""),
             "unit": h.get("unit", ""),
-            "use": h.get("use", ""),
-            "time": h.get("time", ""),
+            "use": h.get("hopuse", ""),
+            "time": h.get("hoptime", ""),
             "aa": h.get("aa", ""),
+            "ibu": h.get("ibu", ""),
+            "temp": h.get("hopstand_temp", ""),
         }
         for h in hops
     ]
