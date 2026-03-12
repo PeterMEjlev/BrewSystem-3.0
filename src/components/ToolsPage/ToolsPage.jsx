@@ -1,5 +1,20 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState } from 'react';
+import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './ToolsPage.module.css';
+
+const TOOL_ITEMS = [
+  {
+    id: 'dilution',
+    label: 'Dilution',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
+        />
+      </svg>
+    ),
+  },
+];
 
 function DilutionCalculator() {
   const [wortVolume, setWortVolume] = useState('');
@@ -124,51 +139,17 @@ function DilutionCalculator() {
 }
 
 function ToolsPage() {
-  const panelRef = useRef(null);
-  const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false });
-
-  const onPointerDown = useCallback((e) => {
-    const tag = e.target.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'TEXTAREA') return;
-    dragState.current = {
-      isDragging: true,
-      startY: e.clientY,
-      startScroll: panelRef.current.scrollTop,
-      moved: false,
-    };
-  }, []);
-
-  const onPointerMove = useCallback((e) => {
-    if (!dragState.current.isDragging) return;
-    const dy = e.clientY - dragState.current.startY;
-    if (Math.abs(dy) > 3) dragState.current.moved = true;
-    panelRef.current.scrollTop = dragState.current.startScroll - dy;
-  }, []);
-
-  const onPointerUp = useCallback(() => {
-    dragState.current.isDragging = false;
-  }, []);
-
-  const onClickCapture = useCallback((e) => {
-    if (dragState.current.moved) {
-      e.stopPropagation();
-      dragState.current.moved = false;
-    }
-  }, []);
+  const [activeTool, setActiveTool] = useState('dilution');
 
   return (
-    <div
-      className={styles.toolsPage}
-      ref={panelRef}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerLeave={onPointerUp}
-      onClickCapture={onClickCapture}
+    <SidebarLayout
+      title="Tools"
+      items={TOOL_ITEMS}
+      activeItem={activeTool}
+      onItemChange={setActiveTool}
     >
-      <h1 className={styles.pageTitle}>Tools</h1>
-      <DilutionCalculator />
-    </div>
+      {activeTool === 'dilution' && <DilutionCalculator />}
+    </SidebarLayout>
   );
 }
 
