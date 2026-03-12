@@ -260,12 +260,20 @@ function RecipePage() {
           <div className={styles.section}>
             <h3 className={styles.sectionTitle}>🌾 Fermentables <span className={styles.sectionSubtitle}>{totalFermentablesKg.toFixed(2)} kg</span></h3>
             <div className={styles.ingredientList}>
-              {recipe.fermentables.map((f, i) => (
+              {[...recipe.fermentables]
+                .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+                .map((f, i) => (
                 <div key={i} className={styles.ingredientRow}>
-                  <span className={styles.ingredientName}>{f.name}</span>
+                  <span className={styles.ingredientName}>
+                    {f.name}
+                    {f.ebc != null && (
+                      <span className={styles.ebcSwatch} style={{ background: ebcToColor(f.ebc) }} title={`EBC ${f.ebc}`} />
+                    )}
+                  </span>
                   <span className={styles.ingredientDetail}>
                     {f.amount} {f.unit}
                     {f.percent ? ` (${f.percent}%)` : ''}
+                    {f.ebc != null ? ` · ${f.ebc} EBC` : ''}
                   </span>
                 </div>
               ))}

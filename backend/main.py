@@ -589,15 +589,21 @@ def _extract_fermentation_temp(recipe: Dict) -> Optional[str]:
 def _extract_fermentables(recipe: Dict) -> list:
     """Extract fermentable ingredients from the recipe."""
     fermentables = recipe.get("fermentables", [])
-    return [
-        {
+    result = []
+    for f in fermentables:
+        lovibond = f.get("lovibond")
+        try:
+            ebc = round(((float(lovibond) * 1.3546) - 0.76) * 1.97, 1) if lovibond is not None else None
+        except (ValueError, TypeError):
+            ebc = None
+        result.append({
             "name": f.get("name", ""),
             "amount": f.get("amount", ""),
             "unit": f.get("unit", ""),
-            "percent": f.get("perc", ""),
-        }
-        for f in fermentables
-    ]
+            "percent": f.get("percent", ""),
+            "ebc": ebc,
+        })
+    return result
 
 
 def _extract_hops(recipe: Dict) -> list:
