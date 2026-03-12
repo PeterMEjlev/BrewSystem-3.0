@@ -426,6 +426,34 @@ function HydrometerCalculator() {
 const SHEETS_CSV_URL =
   'https://docs.google.com/spreadsheets/d/1c5CWo_-7lS9C0HSklylLVgFAT4OwADm2Svqfr9x28Do/export?format=csv&gid=0';
 
+// Colours chosen to evoke the actual appearance of each beer / keg state
+const CONTENT_COLORS = {
+  'IPA':       '#C8782A', // amber copper
+  'NEIPA':     '#3ee849', // hazy orange-gold
+  'Wiessbeer': '#E8C84A', // cloudy banana-gold
+  'Sour':      '#D64878', // tart raspberry pink
+  'Brown Ale': '#7A3B1A', // rich mahogany
+  'Starsan':   '#b8faff', // pink (like the sanitiser itself)
+  'SIPA':      '#2a9826', // lighter golden session IPA
+  'Pilsner':   '#DEC05C', // pale straw gold
+  'Stout':     '#3A2A1A', // near-black dark roast (card uses overrides)
+  'Dirty':     '#ff0000', // warning red-brown
+  'Clean':     '#ffffff', // fresh aqua
+  '???':       '#707070', // neutral grey
+};
+
+function getContentColor(contents) {
+  const key = Object.keys(CONTENT_COLORS).find(
+    (k) => k.toLowerCase() === contents.trim().toLowerCase(),
+  );
+  return key ? CONTENT_COLORS[key] : null;
+}
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
+
 function parseCSV(text) {
   const lines = text.split('\n').filter(Boolean);
   return lines.map((line) => {
@@ -473,13 +501,7 @@ function KegStatus() {
       .finally(() => setLoading(false));
   }, []);
 
-  const contentType = (contents) => {
-    const lower = contents.toLowerCase();
-    if (lower === '???') return 'unknown';
-    if (lower.includes('stout')) return 'stout';
-    if (lower.includes('pilsner')) return 'pilsner';
-    return 'other';
-  };
+  const isUnknown = (contents) => contents.trim() === '???';
 
   if (loading) {
     return (
@@ -503,23 +525,36 @@ function KegStatus() {
     <div className={styles.calculator}>
       <h2 className={styles.calcTitle}>Keg Status</h2>
       <p className={styles.calcSubtitle}>
-        Current inventory — {kegs.filter((k) => contentType(k.contents) !== 'unknown').length} of{' '}
+        Current inventory — {kegs.filter((k) => !isUnknown(k.contents)).length} of{' '}
         {kegs.length} kegs filled
       </p>
 
       <div className={styles.kegGrid}>
         {kegs.map((keg) => {
-          const type = contentType(keg.contents);
+          const color = getContentColor(keg.contents);
+          const unknown = isUnknown(keg.contents);
+          const rgb = color ? hexToRgb(color) : null;
+          const isStout = keg.contents.trim().toLowerCase() === 'stout';
+          const cardStyle = rgb
+            ? {
+                borderLeft: `3px solid ${color}`,
+                background: isStout
+                  ? `linear-gradient(135deg, rgba(${rgb}, 0.55), var(--color-bg-tertiary, #1e293b))`
+                  : `linear-gradient(135deg, rgba(${rgb}, 0.15), var(--color-bg-tertiary, #1e293b))`,
+              }
+            : {};
+          const labelColor = isStout ? '#A68B6B' : color;
           return (
             <div
               key={keg.number}
-              className={`${styles.kegCard} ${styles[`keg_${type}`] || ''}`}
+              className={`${styles.kegCard} ${unknown ? styles.kegUnknown : ''}`}
+              style={cardStyle}
             >
               <div className={styles.kegHeader}>
                 <span className={styles.kegNumber}>#{keg.number}</span>
                 <span className={styles.kegVolume}>{keg.volume}</span>
               </div>
-              <span className={`${styles.kegContents} ${styles[`kegTag_${type}`] || ''}`}>
+              <span className={styles.kegContents} style={labelColor ? { color: labelColor } : undefined}>
                 {keg.contents}
               </span>
               {keg.date && <span className={styles.kegDate}>{keg.date}</span>}
