@@ -1,22 +1,86 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './Settings.module.css';
+
+const SETTINGS_ITEMS = [
+  {
+    id: 'program',
+    label: 'Program',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+        />
+        <circle cx="12" cy="12" r="3" strokeWidth={2} />
+      </svg>
+    ),
+  },
+  {
+    id: 'hardware',
+    label: 'RPi Hardware',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} />
+        <rect x="8" y="8" width="8" height="8" rx="1" strokeWidth={2} />
+        <path strokeLinecap="round" strokeWidth={2}
+          d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'colors',
+    label: 'GUI Colors',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.51-.2-.98-.52-1.34-.3-.33-.48-.73-.48-1.16 0-.88.72-1.6 1.6-1.6H16c3.31 0 6-2.69 6-6 0-4.96-4.48-9-10-9z"
+        />
+        <circle cx="8" cy="10" r="1.5" fill="currentColor" />
+        <circle cx="12" cy="7" r="1.5" fill="currentColor" />
+        <circle cx="16" cy="10" r="1.5" fill="currentColor" />
+        <circle cx="9" cy="14" r="1.5" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: 'about',
+    label: 'About',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <circle cx="12" cy="12" r="10" strokeWidth={2} />
+        <path strokeLinecap="round" strokeWidth={2} d="M12 16v-4M12 8h.01" />
+      </svg>
+    ),
+  },
+];
 
 function Settings() {
   const { theme, updateTheme, resetTheme } = useTheme();
-  const panelRef = useRef(null);
-  const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false });
+  const [activeSection, setActiveSection] = useState('program');
+  const wrapperRef = useRef(null);
+  const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false, scrollEl: null });
+
+  const getScrollParent = (el) => {
+    let node = el;
+    while (node && node !== document.body) {
+      if (node.scrollHeight > node.clientHeight) return node;
+      node = node.parentElement;
+    }
+    return node;
+  };
 
   const onPointerDown = useCallback((e) => {
-    // Don't initiate drag on interactive elements
     const tag = e.target.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'TEXTAREA') return;
-
+    const scrollEl = getScrollParent(wrapperRef.current);
     dragState.current = {
       isDragging: true,
       startY: e.clientY,
-      startScroll: panelRef.current.scrollTop,
+      startScroll: scrollEl?.scrollTop || 0,
       moved: false,
+      scrollEl,
     };
   }, []);
 
@@ -24,7 +88,7 @@ function Settings() {
     if (!dragState.current.isDragging) return;
     const dy = e.clientY - dragState.current.startY;
     if (Math.abs(dy) > 3) dragState.current.moved = true;
-    panelRef.current.scrollTop = dragState.current.startScroll - dy;
+    if (dragState.current.scrollEl) dragState.current.scrollEl.scrollTop = dragState.current.startScroll - dy;
   }, []);
 
   const onPointerUp = useCallback(() => {
@@ -32,20 +96,17 @@ function Settings() {
   }, []);
 
   const onClickCapture = useCallback((e) => {
-    // Suppress clicks that were actually drags
     if (dragState.current.moved) {
       e.stopPropagation();
       dragState.current.moved = false;
     }
   }, []);
+
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState('');
   const [isDevelopment, setIsDevelopment] = useState(false);
   const [expandedSections, setExpandedSections] = useState({
-    programSettings: true,
-    rpiHardware: false,
-    guiColors: false,
     potControl: true,
     pumpControl: true,
     heatingPWM: true,
@@ -68,8 +129,6 @@ function Settings() {
       const response = await fetch('/api/settings');
       if (!response.ok) throw new Error('Failed to fetch settings');
       const data = await response.json();
-      // Ensure app settings always contain keys with defaults,
-      // even if they're missing from the backend response
       data.app = {
         max_watts: 11000,
         max_chart_points: 500,
@@ -195,18 +254,34 @@ function Settings() {
 
   const steps = settings.app.auto_efficiency.steps;
 
+  const resetButton = (
+    <button className={styles.resetAllBtn} onClick={handleResetAllSettings}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={styles.resetIcon}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M12 9v2m0 4h.01M5.07 19H19a2 2 0 001.75-2.96l-6.93-12a2 2 0 00-3.5 0l-6.93 12A2 2 0 005.07 19z"
+        />
+      </svg>
+      Reset All
+    </button>
+  );
+
   return (
-    <div
-      className={styles.settingsPanel}
-      ref={panelRef}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onClickCapture={onClickCapture}
+    <SidebarLayout
+      title="Settings"
+      items={SETTINGS_ITEMS}
+      activeItem={activeSection}
+      onItemChange={setActiveSection}
+      footer={resetButton}
     >
-      <div className={styles.header}>
-        <h2 className={styles.title}>Settings</h2>
-        <div className={styles.headerRight}>
+      <div
+        className={styles.contentWrapper}
+        ref={wrapperRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onClickCapture={onClickCapture}
+      >
+        <div className={styles.header}>
           <div className={styles.environmentToggle}>
             <label className={styles.toggleLabel}>
               <input
@@ -223,22 +298,9 @@ function Settings() {
           </div>
           {saveStatus && <span className={styles.saveStatus}>{saveStatus}</span>}
         </div>
-      </div>
 
-      <div className={styles.sectionsGrid}>
-      {/* Program Settings */}
-      <div className={styles.section}>
-        <h3
-          className={styles.sectionTitle}
-          onClick={() => toggleSection('programSettings')}
-        >
-          <span className={expandedSections.programSettings ? styles.expanded : styles.collapsed}>▼</span>
-          Program Settings
-        </h3>
-        {expandedSections.programSettings && (
+        {activeSection === 'program' && (
           <div className={styles.sectionContent}>
-
-            {/* Max system power */}
             <div className={styles.inputGroup}>
               <label>Max System Power (W):</label>
               <input
@@ -250,7 +312,6 @@ function Settings() {
               />
             </div>
 
-            {/* Chart logging frequency */}
             <div className={styles.inputGroup}>
               <label>Chart Logging Frequency (seconds):</label>
               <input
@@ -261,7 +322,6 @@ function Settings() {
               />
             </div>
 
-            {/* Max chart points */}
             <div className={styles.inputGroup}>
               <label>Max Chart Points:</label>
               <input
@@ -273,7 +333,6 @@ function Settings() {
               />
             </div>
 
-            {/* Auto efficiency control */}
             <div className={styles.subsectionTitle}>Auto Efficiency Control</div>
 
             <div className={styles.inputGroup}>
@@ -341,21 +400,9 @@ function Settings() {
             )}
           </div>
         )}
-      </div>
 
-      {/* Raspberry Pi Hardware */}
-      <div className={styles.section}>
-        <h3
-          className={styles.sectionTitle}
-          onClick={() => toggleSection('rpiHardware')}
-        >
-          <span className={expandedSections.rpiHardware ? styles.expanded : styles.collapsed}>▼</span>
-          Raspberry Pi Hardware
-        </h3>
-        {expandedSections.rpiHardware && (
+        {activeSection === 'hardware' && (
           <div className={styles.sectionContent}>
-
-            {/* Pot Control GPIO Pins */}
             <div className={styles.subSection}>
               <h4
                 className={styles.subSectionTitle}
@@ -365,7 +412,7 @@ function Settings() {
                 Pot Control GPIO Pins
               </h4>
               {expandedSections.potControl && (
-                <div className={styles.sectionContent}>
+                <div className={styles.subSectionContent}>
                   <div className={styles.inputGroup}>
                     <label>BK Pot Pin:</label>
                     <input
@@ -386,7 +433,6 @@ function Settings() {
               )}
             </div>
 
-            {/* Pump Control GPIO Pins */}
             <div className={styles.subSection}>
               <h4
                 className={styles.subSectionTitle}
@@ -396,7 +442,7 @@ function Settings() {
                 Pump Control GPIO Pins
               </h4>
               {expandedSections.pumpControl && (
-                <div className={styles.sectionContent}>
+                <div className={styles.subSectionContent}>
                   <div className={styles.inputGroup}>
                     <label>Pump 1 Pin:</label>
                     <input
@@ -417,7 +463,6 @@ function Settings() {
               )}
             </div>
 
-            {/* Heating Element PWM Pins */}
             <div className={styles.subSection}>
               <h4
                 className={styles.subSectionTitle}
@@ -427,7 +472,7 @@ function Settings() {
                 Heating Element PWM Pins (Hardware PWM)
               </h4>
               {expandedSections.heatingPWM && (
-                <div className={styles.sectionContent}>
+                <div className={styles.subSectionContent}>
                   <div className={styles.inputGroup}>
                     <label>BK PWM Pin:</label>
                     <input
@@ -448,7 +493,6 @@ function Settings() {
               )}
             </div>
 
-            {/* Pump PWM Pins */}
             <div className={styles.subSection}>
               <h4
                 className={styles.subSectionTitle}
@@ -458,7 +502,7 @@ function Settings() {
                 Pump PWM Pins (Software PWM)
               </h4>
               {expandedSections.pumpPWM && (
-                <div className={styles.sectionContent}>
+                <div className={styles.subSectionContent}>
                   <div className={styles.inputGroup}>
                     <label>Pump 1 PWM Pin:</label>
                     <input
@@ -479,7 +523,6 @@ function Settings() {
               )}
             </div>
 
-            {/* PWM Frequencies */}
             <div className={styles.subSection}>
               <h4
                 className={styles.subSectionTitle}
@@ -489,7 +532,7 @@ function Settings() {
                 PWM Frequencies
               </h4>
               {expandedSections.pwmFrequencies && (
-                <div className={styles.sectionContent}>
+                <div className={styles.subSectionContent}>
                   <div className={styles.inputGroup}>
                     <label>Hardware PWM Frequency (Hz):</label>
                     <input
@@ -510,7 +553,6 @@ function Settings() {
               )}
             </div>
 
-            {/* Temperature Sensors */}
             <div className={styles.subSection}>
               <h4
                 className={styles.subSectionTitle}
@@ -520,7 +562,7 @@ function Settings() {
                 Temperature Sensors (DS18B20)
               </h4>
               {expandedSections.temperatureSensors && (
-                <div className={styles.sectionContent}>
+                <div className={styles.subSectionContent}>
                   <div className={styles.inputGroup}>
                     <label>BK Sensor Serial:</label>
                     <input
@@ -556,23 +598,11 @@ function Settings() {
                 </div>
               )}
             </div>
-
           </div>
         )}
-      </div>
 
-      {/* GUI Colors */}
-      <div className={styles.section}>
-        <h3
-          className={styles.sectionTitle}
-          onClick={() => toggleSection('guiColors')}
-        >
-          <span className={expandedSections.guiColors ? styles.expanded : styles.collapsed}>▼</span>
-          GUI Colors
-        </h3>
-        {expandedSections.guiColors && (
+        {activeSection === 'colors' && (
           <div className={styles.sectionContent}>
-
             <div className={styles.subsectionTitle}>Backgrounds</div>
             <div className={styles.colorGroup}>
               <label>Primary Background:</label>
@@ -782,32 +812,22 @@ function Settings() {
             </div>
 
             <button className={styles.resetBtn} onClick={handleResetColors}>
-              Reset to Defaults
+              Reset Colors to Defaults
             </button>
           </div>
         )}
-      </div>
 
-      {/* About Section */}
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>About</h3>
-        <div className={styles.info}>
-          <p><strong>Brew System v3</strong></p>
-          <p>Web-based brewery control system</p>
-          <p>Designed for Raspberry Pi kiosk mode</p>
-        </div>
+        {activeSection === 'about' && (
+          <div className={styles.sectionContent}>
+            <div className={styles.info}>
+              <p><strong>Brew System v3</strong></p>
+              <p>Web-based brewery control system</p>
+              <p>Designed for Raspberry Pi kiosk mode</p>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Reset All Settings */}
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Danger Zone</h3>
-        <p className={styles.dangerDescription}>Reset all settings and colors back to their default values.</p>
-        <button className={styles.resetAllBtn} onClick={handleResetAllSettings}>
-          Reset All Settings to Defaults
-        </button>
-      </div>
-      </div>
-    </div>
+    </SidebarLayout>
   );
 }
 

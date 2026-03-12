@@ -1,6 +1,6 @@
 import styles from './SidebarLayout.module.css';
 
-function SidebarLayout({ title, items, activeItem, onItemChange, children }) {
+function SidebarLayout({ title, items, activeItem, onItemChange, footer, children }) {
   return (
     <div className={styles.layout}>
       <aside className={styles.sidebar}>
@@ -17,6 +17,7 @@ function SidebarLayout({ title, items, activeItem, onItemChange, children }) {
             </button>
           ))}
         </nav>
+        {footer && <div className={styles.sidebarFooter}>{footer}</div>}
       </aside>
 
       <div className={styles.divider} />

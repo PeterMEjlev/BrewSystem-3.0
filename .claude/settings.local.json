@@ -7,7 +7,8 @@
       "Bash(node -e \"const e = require\\(''./node_modules/electron''\\); const child = require\\(''child_process''\\); const proc = child.spawnSync\\(e, [''-e'', ''const el = require\\(\"\"electron\"\"\\); console.log\\(JSON.stringify\\(Object.keys\\(el\\)\\)\\)''], {encoding: ''utf8''}\\); console.log\\(''stdout:'', proc.stdout\\); console.log\\(''stderr:'', proc.stderr\\)\")",
       "Bash(npx vite --port 5173)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
-      "Bash(grep -E \"\\\\.\\(ts|tsx|js|jsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|tsx|js|jsx\\)$\")",
+      "Bash(npm run:*)"
     ]
   }
 }

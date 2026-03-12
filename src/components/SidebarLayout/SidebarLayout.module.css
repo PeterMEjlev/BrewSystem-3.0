@@ -74,6 +74,12 @@
   height: 22px;
 }
 
+/* Sidebar footer */
+.sidebarFooter {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
 /* Divider */
 .divider {
   width: 1px;

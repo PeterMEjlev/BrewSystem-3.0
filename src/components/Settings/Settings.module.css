@@ -1,21 +1,7 @@
+/* Fallback wrapper for loading/error states (before SidebarLayout renders) */
 .settingsPanel {
   padding: 24px;
-  overflow-y: auto;
   height: 100%;
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
-  cursor: grab;
-}
-
-.settingsPanel:active {
-  cursor: grabbing;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 32px;
 }
 
 .title {
@@ -25,10 +11,36 @@
   margin: 0;
 }
 
-.headerRight {
+.loading,
+.error {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  padding: 20px;
+}
+
+.error {
+  color: var(--color-vessel-bk);
+}
+
+/* Content area inside SidebarLayout */
+.contentWrapper {
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.contentWrapper:active {
+  cursor: grabbing;
+}
+
+/* Header bar (env toggle + save status) */
+.header {
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .environmentToggle {
@@ -97,63 +109,12 @@
   border-radius: var(--radius-md);
 }
 
-.loading,
-.error {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-base);
-  padding: 20px;
-}
-
-.error {
-  color: var(--color-vessel-bk);
-}
-
-.sectionsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
-  gap: 24px;
-  align-items: start;
-}
-
-.section {
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-xl);
-  padding: 24px;
-  box-shadow: var(--shadow-card);
-}
-
-.sectionTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0 0 16px 0;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  transition: color 0.2s;
-}
-
-.sectionTitle:hover {
-  color: var(--color-text-muted);
-}
-
-.expanded,
-.collapsed {
-  font-size: var(--font-size-sm);
-  transition: transform 0.2s;
-  display: inline-block;
-}
-
-.collapsed {
-  transform: rotate(-90deg);
-}
-
+/* Section content */
 .sectionContent {
-  margin-top: 16px;
+  max-width: 700px;
 }
 
+/* Input rows */
 .inputGroup {
   display: flex;
   align-items: center;
@@ -202,6 +163,7 @@
   width: 240px;
 }
 
+/* Hardware sub-sections (collapsible) */
 .subSection {
   margin-bottom: 16px;
 }
@@ -230,6 +192,22 @@
   color: var(--color-text-muted);
 }
 
+.subSectionContent {
+  padding: 12px 0 0 12px;
+}
+
+.expanded,
+.collapsed {
+  font-size: var(--font-size-sm);
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Color subsection headings */
 .subsectionTitle {
   font-size: 15px;
   font-weight: var(--font-weight-semibold);
@@ -239,6 +217,11 @@
   letter-spacing: 0.05em;
 }
 
+.subsectionTitle:first-child {
+  margin-top: 0;
+}
+
+/* Auto-efficiency threshold table */
 .thresholdTable {
   background: var(--color-bg-primary);
   border-radius: 10px;
@@ -307,28 +290,7 @@
   border-color: var(--color-border-light);
 }
 
-.placeholder {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.info {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  line-height: 1.8;
-}
-
-.info p {
-  margin: 4px 0;
-}
-
-.info strong {
-  color: var(--color-text-primary);
-  font-size: var(--font-size-base);
-}
-
+/* Color pickers */
 .colorGroup {
   display: flex;
   align-items: center;
@@ -388,6 +350,7 @@
   border-radius: 5px;
 }
 
+/* Reset colors button */
 .resetBtn {
   margin-top: 16px;
   padding: 10px 20px;
@@ -411,14 +374,14 @@
   transform: scale(0.98);
 }
 
-.dangerDescription {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  margin: 0 0 16px 0;
-}
-
+/* Reset all button (sidebar footer) */
 .resetAllBtn {
-  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   background: transparent;
@@ -427,7 +390,6 @@
   color: var(--color-vessel-bk);
   cursor: pointer;
   transition: var(--transition-fast);
-  width: 100%;
 }
 
 .resetAllBtn:hover {
@@ -436,4 +398,26 @@
 
 .resetAllBtn:active {
   transform: scale(0.98);
+}
+
+.resetIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* About section */
+.info {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.8;
+}
+
+.info p {
+  margin: 4px 0;
+}
+
+.info strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
 }
