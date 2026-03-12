@@ -15,6 +15,18 @@ function RecipePage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('recipeSectionsCollapsed');
+      return saved ? JSON.parse(saved) : { fermentables: false, hops: false, yeast: false };
+    } catch { return { fermentables: false, hops: false, yeast: false }; }
+  });
+
+  const toggleSection = (key) => setCollapsed(prev => {
+    const next = { ...prev, [key]: !prev[key] };
+    try { sessionStorage.setItem('recipeSectionsCollapsed', JSON.stringify(next)); } catch {}
+    return next;
+  });
 
   const onPointerDown = useCallback((e) => {
     const tag = e.target.tagName;
@@ -258,74 +270,93 @@ function RecipePage() {
 
         {recipe.fermentables.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>🌾 Fermentables <span className={styles.sectionSubtitle}>{totalFermentablesKg.toFixed(2)} kg</span></h3>
-            <div className={styles.ingredientList}>
-              {[...recipe.fermentables]
-                .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
-                .map((f, i) => (
-                <div key={i} className={styles.ingredientRow}>
-                  <span className={styles.ingredientName}>
-                    {f.name}
-                    {f.ebc != null && (
-                      <span className={styles.ebcSwatch} style={{ background: ebcToColor(f.ebc) }} title={`EBC ${f.ebc}`} />
-                    )}
-                  </span>
-                  <span className={styles.ingredientDetail}>
-                    {f.amount} {f.unit}
-                    {f.percent ? ` (${f.percent}%)` : ''}
-                    {f.ebc != null ? ` · ${f.ebc} EBC` : ''}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <button className={styles.sectionTitle} onClick={() => toggleSection('fermentables')}>
+              <span>🌾 Fermentables <span className={styles.sectionSubtitle}>{totalFermentablesKg.toFixed(2)} kg</span></span>
+              <svg className={`${styles.collapseChevron} ${collapsed.fermentables ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {!collapsed.fermentables && (
+              <div className={styles.ingredientList}>
+                {[...recipe.fermentables]
+                  .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+                  .map((f, i) => (
+                  <div key={i} className={styles.ingredientRow}>
+                    <span className={styles.ingredientName}>
+                      {f.name}
+                      {f.ebc != null && (
+                        <span className={styles.ebcSwatch} style={{ background: ebcToColor(f.ebc) }} title={`EBC ${f.ebc}`} />
+                      )}
+                    </span>
+                    <span className={styles.ingredientDetail}>
+                      {f.amount} {f.unit}
+                      {f.percent ? ` (${f.percent}%)` : ''}
+                      {f.ebc != null ? ` · ${f.ebc} EBC` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {recipe.hops.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>
-              🌿 Hops <span className={styles.sectionSubtitle}>{totalHopsG.toFixed(1)} g{hopsGperL != null ? ` · ${hopsGperL.toFixed(1)} g/L` : ''}</span>
-            </h3>
-            <div className={styles.ingredientList}>
-              {recipe.hops.map((h, i) => {
-                const useLabel = h.use && h.temp
-                  ? `${h.use} @ ${h.temp}°C`
-                  : (h.use || null);
-                return (
-                  <div key={i} className={styles.hopRow}>
-                    <div className={styles.hopMain}>
-                      <span className={styles.ingredientName}>
-                        {h.name}
-                        {h.aa ? <span className={styles.hopAa}>{h.aa}% AA</span> : ''}
-                      </span>
-                      <span className={styles.hopMeta}>
-                        {h.amount}{h.unit ? ` ${h.unit}` : ''}
-                        {useLabel ? ` · ${useLabel}` : ''}
-                        {h.time != null && h.time !== '' ? ` · ${h.time} min` : ''}
-                      </span>
+            <button className={styles.sectionTitle} onClick={() => toggleSection('hops')}>
+              <span>🌿 Hops <span className={styles.sectionSubtitle}>{totalHopsG.toFixed(1)} g{hopsGperL != null ? ` · ${hopsGperL.toFixed(1)} g/L` : ''}</span></span>
+              <svg className={`${styles.collapseChevron} ${collapsed.hops ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {!collapsed.hops && (
+              <div className={styles.ingredientList}>
+                {recipe.hops.map((h, i) => {
+                  const useLabel = h.use && h.temp
+                    ? `${h.use} @ ${h.temp}°C`
+                    : (h.use || null);
+                  return (
+                    <div key={i} className={styles.hopRow}>
+                      <div className={styles.hopMain}>
+                        <span className={styles.ingredientName}>
+                          {h.name}
+                          {h.aa ? <span className={styles.hopAa}>{h.aa}% AA</span> : ''}
+                        </span>
+                        <span className={styles.hopMeta}>
+                          {h.amount}{h.unit ? ` ${h.unit}` : ''}
+                          {useLabel ? ` · ${useLabel}` : ''}
+                          {h.time != null && h.time !== '' ? ` · ${h.time} min` : ''}
+                        </span>
+                      </div>
+                      {h.ibu ? <span className={styles.hopIbu}>{fmt(h.ibu, 1)} IBU</span> : null}
                     </div>
-                    {h.ibu ? <span className={styles.hopIbu}>{fmt(h.ibu, 1)} IBU</span> : null}
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
         {recipe.yeast.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>🧫 Yeast</h3>
-            <div className={styles.ingredientList}>
-              {recipe.yeast.map((y, i) => (
-                <div key={i} className={styles.ingredientRow}>
-                  <span className={styles.ingredientName}>{y.name}</span>
-                  <span className={styles.ingredientDetail}>
-                    {y.amount && y.amountUnit ? `${y.amount} ${y.amountUnit} | ` : ''}{y.lab}
-                    {y.attenuation ? ` | ${y.attenuation}% atten.` : ''}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <button className={styles.sectionTitle} onClick={() => toggleSection('yeast')}>
+              <span>🧫 Yeast</span>
+              <svg className={`${styles.collapseChevron} ${collapsed.yeast ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {!collapsed.yeast && (
+              <div className={styles.ingredientList}>
+                {recipe.yeast.map((y, i) => (
+                  <div key={i} className={styles.ingredientRow}>
+                    <span className={styles.ingredientName}>{y.name}</span>
+                    <span className={styles.ingredientDetail}>
+                      {y.amount && y.amountUnit ? `${y.amount} ${y.amountUnit} | ` : ''}{y.lab}
+                      {y.attenuation ? ` | ${y.attenuation}% atten.` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

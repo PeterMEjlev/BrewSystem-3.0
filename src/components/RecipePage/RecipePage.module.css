@@ -186,8 +186,29 @@
   color: var(--color-text-primary);
   margin: 0 0 14px 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sectionTitle:last-child {
+  margin-bottom: 0;
+}
+
+.collapseChevron {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform 0.2s ease;
+}
+
+.collapseChevronCollapsed {
+  transform: rotate(-90deg);
 }
 
 .sectionSubtitle {
@@ -201,6 +222,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: 14px;
 }
 
 .ingredientRow {
