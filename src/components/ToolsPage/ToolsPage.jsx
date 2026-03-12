@@ -470,10 +470,70 @@ function parseCSV(text) {
   });
 }
 
+const SORT_OPTIONS = [
+  { key: 'number',   label: 'Keg #' },
+  { key: 'volume',   label: 'Size' },
+  { key: 'contents', label: 'Contents' },
+  { key: 'date',     label: 'Date' },
+  { key: 'note',     label: 'Note' },
+  { key: 'abv',      label: 'ABV' },
+];
+
+function parseVolume(v) {
+  return parseFloat(v) || 0;
+}
+
+function parseDate(d) {
+  if (!d) return 0;
+  // Handle DD/MM/YYYY format
+  const parts = d.split('/');
+  if (parts.length === 3) {
+    return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime() || 0;
+  }
+  return new Date(d).getTime() || 0;
+}
+
+function sortKegs(kegs, sortKey, sortAsc) {
+  const dir = sortAsc ? 1 : -1;
+  return [...kegs].sort((a, b) => {
+    switch (sortKey) {
+      case 'number':
+        return (parseInt(a.number) - parseInt(b.number)) * dir;
+      case 'volume':
+        return (parseVolume(a.volume) - parseVolume(b.volume)) * dir;
+      case 'contents':
+        return a.contents.localeCompare(b.contents) * dir;
+      case 'date': {
+        const da = parseDate(a.date);
+        const db = parseDate(b.date);
+        // Push empty dates to the end regardless of direction
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return (da - db) * dir;
+      }
+      case 'note':
+        return a.note.localeCompare(b.note) * dir;
+      case 'abv': {
+        const aa = parseFloat(a.abv) || 0;
+        const ab = parseFloat(b.abv) || 0;
+        if (!aa && !ab) return 0;
+        if (!aa) return 1;
+        if (!ab) return -1;
+        return (aa - ab) * dir;
+      }
+      default:
+        return 0;
+    }
+  });
+}
+
 function KegStatus() {
   const [kegs, setKegs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sortKey, setSortKey] = useState('number');
+  const [sortAsc, setSortAsc] = useState(true);
 
   useEffect(() => {
     fetch(SHEETS_CSV_URL)
@@ -503,6 +563,15 @@ function KegStatus() {
 
   const isUnknown = (contents) => contents.trim() === '???';
 
+  const handleSort = (key) => {
+    if (key === sortKey) {
+      setSortAsc((prev) => !prev);
+    } else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+  };
+
   if (loading) {
     return (
       <div className={styles.calculator}>
@@ -521,6 +590,8 @@ function KegStatus() {
     );
   }
 
+  const sorted = sortKegs(kegs, sortKey, sortAsc);
+
   return (
     <div className={styles.calculator}>
       <h2 className={styles.calcTitle}>Keg Status</h2>
@@ -529,8 +600,23 @@ function KegStatus() {
         {kegs.length} kegs filled
       </p>
 
+      <div className={styles.sortBar}>
+        {SORT_OPTIONS.map(({ key, label }) => (
+          <button
+            key={key}
+            className={`${styles.sortBtn} ${sortKey === key ? styles.sortActive : ''}`}
+            onClick={() => handleSort(key)}
+          >
+            {label}
+            {sortKey === key && (
+              <span className={styles.sortArrow}>{sortAsc ? '▲' : '▼'}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
       <div className={styles.kegGrid}>
-        {kegs.map((keg) => {
+        {sorted.map((keg) => {
           const color = getContentColor(keg.contents);
           const unknown = isUnknown(keg.contents);
           const rgb = color ? hexToRgb(color) : null;

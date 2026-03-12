@@ -205,6 +205,45 @@
   white-space: nowrap;
 }
 
+/* Keg sort bar */
+.sortBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.sortBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-semibold);
+  padding: 6px 12px;
+  transition: var(--transition-fast);
+}
+
+.sortBtn:hover:not(.sortActive) {
+  color: var(--color-text-primary);
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.sortActive {
+  background: var(--gradient-warm);
+  border-color: transparent;
+  color: white;
+}
+
+.sortArrow {
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
 /* Keg Status */
 .kegGrid {
   display: grid;
