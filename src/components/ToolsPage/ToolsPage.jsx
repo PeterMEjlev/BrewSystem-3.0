@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './ToolsPage.module.css';
 
@@ -41,6 +41,20 @@ const TOOL_ITEMS = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
           d="M8 12c0-1.5.5-3 2-4m4 8c0 1.5-.5 3-2 4M12 8v1m0 6v1"
         />
+      </svg>
+    ),
+  },
+  {
+    id: 'kegs',
+    label: 'Keg Status',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <ellipse cx="12" cy="4" rx="6" ry="2" strokeWidth={2} />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M6 4v16c0 1.1 2.686 2 6 2s6-.9 6-2V4"
+        />
+        <ellipse cx="12" cy="20" rx="6" ry="2" strokeWidth={2} fill="none" />
+        <path strokeLinecap="round" strokeWidth={1.5} d="M6 10c2 1 8 1 12 0" />
       </svg>
     ),
   },
@@ -409,6 +423,116 @@ function HydrometerCalculator() {
   );
 }
 
+const SHEETS_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/1c5CWo_-7lS9C0HSklylLVgFAT4OwADm2Svqfr9x28Do/export?format=csv&gid=0';
+
+function parseCSV(text) {
+  const lines = text.split('\n').filter(Boolean);
+  return lines.map((line) => {
+    const cols = [];
+    let cur = '';
+    let inQuotes = false;
+    for (const ch of line) {
+      if (ch === '"') { inQuotes = !inQuotes; continue; }
+      if (ch === ',' && !inQuotes) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    cols.push(cur.trim());
+    return cols;
+  });
+}
+
+function KegStatus() {
+  const [kegs, setKegs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(SHEETS_CSV_URL)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch keg data');
+        return res.text();
+      })
+      .then((text) => {
+        const rows = parseCSV(text);
+        // Row 0 is blank, row 1 is header — data starts at row 2
+        const dataRows = rows.slice(2);
+        const parsed = dataRows
+          .map((cols) => ({
+            number: cols[1] || '',
+            contents: cols[2] || '',
+            date: cols[3] || '',
+            note: cols[4] || '',
+            volume: cols[5] || '',
+            abv: cols[6] || '',
+          }))
+          .filter((k) => k.number);
+        setKegs(parsed);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const contentType = (contents) => {
+    const lower = contents.toLowerCase();
+    if (lower === '???') return 'unknown';
+    if (lower.includes('stout')) return 'stout';
+    if (lower.includes('pilsner')) return 'pilsner';
+    return 'other';
+  };
+
+  if (loading) {
+    return (
+      <div className={styles.calculator}>
+        <h2 className={styles.calcTitle}>Keg Status</h2>
+        <p className={styles.calcSubtitle}>Loading keg data…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={styles.calculator}>
+        <h2 className={styles.calcTitle}>Keg Status</h2>
+        <p className={styles.error}>{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.calculator}>
+      <h2 className={styles.calcTitle}>Keg Status</h2>
+      <p className={styles.calcSubtitle}>
+        Current inventory — {kegs.filter((k) => contentType(k.contents) !== 'unknown').length} of{' '}
+        {kegs.length} kegs filled
+      </p>
+
+      <div className={styles.kegGrid}>
+        {kegs.map((keg) => {
+          const type = contentType(keg.contents);
+          return (
+            <div
+              key={keg.number}
+              className={`${styles.kegCard} ${styles[`keg_${type}`] || ''}`}
+            >
+              <div className={styles.kegHeader}>
+                <span className={styles.kegNumber}>#{keg.number}</span>
+                <span className={styles.kegVolume}>{keg.volume}</span>
+              </div>
+              <span className={`${styles.kegContents} ${styles[`kegTag_${type}`] || ''}`}>
+                {keg.contents}
+              </span>
+              {keg.date && <span className={styles.kegDate}>{keg.date}</span>}
+              {keg.note && <span className={styles.kegNote}>{keg.note}</span>}
+              {keg.abv && <span className={styles.kegAbv}>{keg.abv} ABV</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ToolsPage() {
   const [activeTool, setActiveTool] = useState('dilution');
 
@@ -422,6 +546,7 @@ function ToolsPage() {
       {activeTool === 'dilution' && <DilutionCalculator />}
       {activeTool === 'hydrometer' && <HydrometerCalculator />}
       {activeTool === 'carbonation' && <CarbonationCalculator />}
+      {activeTool === 'kegs' && <KegStatus />}
     </SidebarLayout>
   );
 }

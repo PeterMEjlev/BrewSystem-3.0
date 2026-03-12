@@ -204,3 +204,103 @@
   margin-left: auto;
   white-space: nowrap;
 }
+
+/* Keg Status */
+.kegGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.kegCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px solid var(--color-border);
+  transition: var(--transition-fast);
+}
+
+.kegCard:hover {
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* Color accents per content type */
+.keg_stout {
+  border-left: 3px solid #4ade80;
+}
+
+.keg_pilsner {
+  border-left: 3px solid #60a5fa;
+}
+
+.keg_other {
+  border-left: 3px solid #fbbf24;
+}
+
+.keg_unknown {
+  border-left: 3px solid rgba(100, 116, 139, 0.3);
+  opacity: 0.55;
+}
+
+.kegHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.kegNumber {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.kegVolume {
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  background: rgba(100, 116, 139, 0.15);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.kegContents {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.kegTag_stout {
+  color: #4ade80;
+}
+
+.kegTag_pilsner {
+  color: #60a5fa;
+}
+
+.kegTag_other {
+  color: #fbbf24;
+}
+
+.kegTag_unknown {
+  color: var(--color-text-muted);
+}
+
+.kegDate {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-muted);
+}
+
+.kegNote {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.kegAbv {
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+}
