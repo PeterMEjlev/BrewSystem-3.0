@@ -260,10 +260,12 @@
   background: var(--color-bg-tertiary, #1e293b);
   border: 1px solid var(--color-border);
   transition: var(--transition-fast);
+  cursor: pointer;
 }
 
 .kegCard:hover {
   border-color: rgba(148, 163, 184, 0.35);
+  transform: translateY(-1px);
 }
 
 /* Unknown / empty kegs */
@@ -314,4 +316,109 @@
   font-size: var(--font-size-xs, 0.75rem);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-muted);
+}
+
+/* Edit modal */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modalContent {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modalTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.modalClose {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  border-radius: var(--radius-sm, 6px);
+  transition: var(--transition-fast);
+}
+
+.modalClose:hover {
+  color: var(--color-text-primary);
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.fieldRow {
+  display: flex;
+  gap: 12px;
+}
+
+.fieldRow .field {
+  flex: 1;
+}
+
+.fieldRow .input {
+  width: 100%;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modalCancelBtn {
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 10px 20px;
+  transition: var(--transition-fast);
+}
+
+.modalCancelBtn:hover {
+  color: var(--color-text-primary);
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.modalContent .input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.modalContent select.input {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
 }

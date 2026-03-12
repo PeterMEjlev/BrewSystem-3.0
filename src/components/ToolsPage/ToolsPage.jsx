@@ -426,6 +426,9 @@ function HydrometerCalculator() {
 const SHEETS_CSV_URL =
   'https://docs.google.com/spreadsheets/d/1c5CWo_-7lS9C0HSklylLVgFAT4OwADm2Svqfr9x28Do/export?format=csv&gid=0';
 
+// Replace with your deployed Apps Script web app URL
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxKTibop5YCnFjuewJLn-cf0MJ-o2SFVVqMzHm3BK-bp7fWmT9bECyZF5NF5uw4A-ywtA/exec';
+
 // Colours chosen to evoke the actual appearance of each beer / keg state
 const CONTENT_COLORS = {
   'IPA':       '#C8782A', // amber copper
@@ -441,6 +444,12 @@ const CONTENT_COLORS = {
   'Clean':     '#ffffff', // fresh aqua
   '???':       '#707070', // neutral grey
 };
+
+const CONTENT_OPTIONS = [
+  'IPA', 'NEIPA', 'Wiessbeer', 'Sour', 'Brown Ale',
+  'Starsan', 'SIPA', 'Pilsner', 'Stout',
+  'Dirty', 'Clean', '???',
+];
 
 function getContentColor(contents) {
   const key = Object.keys(CONTENT_COLORS).find(
@@ -528,12 +537,116 @@ function sortKegs(kegs, sortKey, sortAsc) {
   });
 }
 
+function KegEditModal({ keg, onClose, onSave }) {
+  const [form, setForm] = useState({
+    contents: keg.contents,
+    date: keg.date,
+    note: keg.note,
+    abv: keg.abv,
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleSave = () => {
+    if (!APPS_SCRIPT_URL) {
+      setSaveError('Apps Script URL not configured. See google-apps-script/keg-updater.gs for setup instructions.');
+      return;
+    }
+    setSaving(true);
+    setSaveError('');
+
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ number: keg.number, ...form }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        onSave({ ...keg, ...form });
+      })
+      .catch((err) => setSaveError(err.message))
+      .finally(() => setSaving(false));
+  };
+
+  const color = getContentColor(form.contents);
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <h3 className={styles.modalTitle}>
+            Edit Keg <span style={color ? { color } : undefined}>#{keg.number}</span>
+          </h3>
+          <button className={styles.modalClose} onClick={onClose}>×</button>
+        </div>
+
+        <div className={styles.fields}>
+          <div className={styles.field}>
+            <label className={styles.label}>Contents</label>
+            <select
+              className={styles.input}
+              value={form.contents}
+              onChange={(e) => update('contents', e.target.value)}
+            >
+              {CONTENT_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Date</label>
+            <input
+              className={styles.input}
+              type="text"
+              value={form.date}
+              onChange={(e) => update('date', e.target.value)}
+              placeholder="DD/MM/YYYY"
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Note</label>
+            <input
+              className={styles.input}
+              type="text"
+              value={form.note}
+              onChange={(e) => update('note', e.target.value)}
+              placeholder="e.g. Dry-hopped"
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>ABV</label>
+            <input
+              className={styles.input}
+              type="text"
+              value={form.abv}
+              onChange={(e) => update('abv', e.target.value)}
+              placeholder="e.g. 5.2%"
+            />
+          </div>
+        </div>
+
+        {saveError && <p className={styles.error}>{saveError}</p>}
+
+        <div className={styles.modalActions}>
+          <button className={styles.modalCancelBtn} onClick={onClose}>Cancel</button>
+          <button className={styles.calcButton} onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function KegStatus() {
   const [kegs, setKegs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sortKey, setSortKey] = useState('number');
   const [sortAsc, setSortAsc] = useState(true);
+  const [editingKeg, setEditingKeg] = useState(null);
 
   useEffect(() => {
     fetch(SHEETS_CSV_URL)
@@ -562,6 +675,13 @@ function KegStatus() {
   }, []);
 
   const isUnknown = (contents) => contents.trim() === '???';
+
+  const handleKegSave = (updatedKeg) => {
+    setKegs((prev) =>
+      prev.map((k) => (k.number === updatedKeg.number ? updatedKeg : k)),
+    );
+    setEditingKeg(null);
+  };
 
   const handleSort = (key) => {
     if (key === sortKey) {
@@ -635,6 +755,10 @@ function KegStatus() {
               key={keg.number}
               className={`${styles.kegCard} ${unknown ? styles.kegUnknown : ''}`}
               style={cardStyle}
+              onClick={() => setEditingKeg(keg)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setEditingKeg(keg)}
             >
               <div className={styles.kegHeader}>
                 <span className={styles.kegNumber}>#{keg.number}</span>
@@ -650,6 +774,14 @@ function KegStatus() {
           );
         })}
       </div>
+
+      {editingKeg && (
+        <KegEditModal
+          keg={editingKeg}
+          onClose={() => setEditingKeg(null)}
+          onSave={handleKegSave}
+        />
+      )}
     </div>
   );
 }
