@@ -463,7 +463,7 @@ function TemperatureChart() {
               labelFormatter={(ts) => formatTime(new Date(ts))}
               formatter={(value, name) => [`${Number(value).toFixed(1)} °C`, name]}
             />
-            <Legend wrapperStyle={{ color: '#cbd5e1' }} />
+            <Legend wrapperStyle={{ color: '#cbd5e1' }} itemSorter={null} />
             {visibility.BK && <Line type="monotone" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} isAnimationActive={false} />}
             {visibility.MLT && <Line type="monotone" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} isAnimationActive={false} />}
             {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} isAnimationActive={false} />}
