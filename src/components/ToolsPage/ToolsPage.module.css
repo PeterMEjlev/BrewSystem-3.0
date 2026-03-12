@@ -126,3 +126,81 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* Segmented unit toggle */
+.segmented {
+  display: flex;
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  width: fit-content;
+}
+
+.segBtn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 8px 20px;
+  transition: var(--transition-fast);
+}
+
+.segBtn:hover:not(.segActive) {
+  color: var(--color-text-primary);
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.segBtn.segActive {
+  background: var(--gradient-warm);
+  color: white;
+}
+
+/* Carbonation guidelines table */
+.guidelines {
+  margin-top: 28px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 20px;
+}
+
+.guidelinesTitle {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 14px 0;
+}
+
+.guidelinesTable {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 380px;
+}
+
+.guidelineRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.guidelineRow:nth-child(odd) {
+  background: rgba(100, 116, 139, 0.07);
+}
+
+.guidelineStyle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  flex: 1;
+}
+
+.guidelineRange {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
