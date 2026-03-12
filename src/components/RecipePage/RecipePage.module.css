@@ -1,3 +1,18 @@
+/* ─── Recipe page font sizes ─────────────────────────────────────────────────
+   Adjust these to change text sizes across the entire recipe page.         */
+:root {
+  --recipe-scale:     1.2;     /* ← scale everything up/down (e.g. 1.1 = 10% bigger) */
+
+  --recipe-font-xs:   calc(15px * var(--recipe-scale));  /* hop meta, section subtitles, IBU label      */
+  --recipe-font-sm:   calc(15px * var(--recipe-scale));  /* ingredient names, detail text, list stats   */
+  --recipe-font-base: calc(17px * var(--recipe-scale));  /* general body text, back button              */
+  --recipe-font-lg:   calc(21px * var(--recipe-scale));  /* section titles (Fermentables, Hops, Yeast)  */
+  --recipe-font-xl:   calc(22px * var(--recipe-scale));  /* recipe name                                 */
+  --recipe-font-2xl:  calc(26px * var(--recipe-scale));  /* page title ("Recipes")                      */
+  --recipe-stat-val:  calc(18px * var(--recipe-scale));  /* stat card values (OG, FG, ABV…)             */
+  --recipe-stat-lbl:  calc(12px * var(--recipe-scale));  /* stat card labels                            */
+}
+
 .recipePanel {
   padding: 24px;
   overflow-y: auto;
@@ -19,7 +34,7 @@
 }
 
 .title {
-  font-size: var(--font-size-2xl);
+  font-size: var(--recipe-font-2xl);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   margin: 0;
@@ -50,7 +65,7 @@
 
 .loading {
   color: var(--color-text-muted);
-  font-size: var(--font-size-base);
+  font-size: var(--recipe-font-base);
   padding: 20px;
 }
 
@@ -63,13 +78,13 @@
 
 .error {
   color: var(--color-vessel-bk);
-  font-size: var(--font-size-base);
+  font-size: var(--recipe-font-base);
   margin: 0 0 16px 0;
 }
 
 .retryBtn {
   padding: 10px 24px;
-  font-size: var(--font-size-sm);
+  font-size: var(--recipe-font-sm);
   font-weight: var(--font-weight-semibold);
   background: transparent;
   border: 2px solid var(--color-border-light);
@@ -98,14 +113,14 @@
 }
 
 .recipeName {
-  font-size: var(--font-size-xl);
+  font-size: var(--recipe-font-xl);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   margin: 0 0 6px 0;
 }
 
 .recipeStyle {
-  font-size: var(--font-size-sm);
+  font-size: var(--recipe-font-sm);
   color: var(--color-text-muted);
   font-weight: var(--font-weight-medium);
 }
@@ -130,7 +145,7 @@
 }
 
 .statLabel {
-  font-size: var(--font-size-xs);
+  font-size: var(--recipe-stat-lbl);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -138,7 +153,7 @@
 }
 
 .statValue {
-  font-size: var(--font-size-lg);
+  font-size: var(--recipe-stat-val);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   font-family: var(--font-mono);
@@ -166,7 +181,7 @@
 }
 
 .sectionTitle {
-  font-size: var(--font-size-lg);
+  font-size: var(--recipe-font-lg);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
   margin: 0 0 14px 0;
@@ -176,7 +191,7 @@
 }
 
 .sectionSubtitle {
-  font-size: var(--font-size-xs);
+  font-size: var(--recipe-font-xs);
   font-weight: var(--font-weight-normal);
   color: var(--color-text-muted);
   font-family: var(--font-mono);
@@ -200,7 +215,7 @@
 
 .ingredientName {
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--recipe-font-sm);
   font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
@@ -208,7 +223,7 @@
 }
 
 .hopAa {
-  font-size: var(--font-size-xs);
+  font-size: var(--recipe-font-xs);
   color: var(--color-text-muted);
   font-weight: var(--font-weight-normal);
 }
@@ -231,13 +246,13 @@
 }
 
 .hopMeta {
-  font-size: var(--font-size-xs);
+  font-size: var(--recipe-font-xs);
   color: var(--color-text-muted);
   font-family: var(--font-mono);
 }
 
 .hopIbu {
-  font-size: var(--font-size-xs);
+  font-size: var(--recipe-font-xs);
   font-family: var(--font-mono);
   color: var(--color-text-secondary);
   white-space: nowrap;
@@ -246,7 +261,7 @@
 
 .ingredientDetail {
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--recipe-font-sm);
   font-family: var(--font-mono);
   white-space: nowrap;
 }
@@ -259,7 +274,7 @@
   background: none;
   border: none;
   color: var(--color-text-muted);
-  font-size: var(--font-size-base);
+  font-size: var(--recipe-font-base);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
   padding: 8px 0;
@@ -326,7 +341,7 @@
 
 .recipeListName {
   color: var(--color-text-primary);
-  font-size: var(--font-size-base);
+  font-size: var(--recipe-font-base);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
   overflow: hidden;
@@ -335,14 +350,14 @@
 
 .recipeListStyle {
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--recipe-font-xs);
 }
 
 .recipeListStats {
   display: flex;
   gap: 12px;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--recipe-font-sm);
   font-family: var(--font-mono);
   white-space: nowrap;
 }
