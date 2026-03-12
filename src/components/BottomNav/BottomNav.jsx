@@ -49,6 +49,22 @@ function BottomNav({ activePanel, onPanelChange }) {
       </button>
 
       <button
+        className={`${styles.navBtn} ${activePanel === 'tools' ? styles.active : ''}`}
+        onClick={() => onPanelChange('tools')}
+      >
+        <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 7H6a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-3M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-6 0h6"
+          />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 12h3m-3 4h3" />
+        </svg>
+        <span className={styles.label}>Tools</span>
+      </button>
+
+      <button
         className={`${styles.navBtn} ${activePanel === 'settings' ? styles.active : ''}`}
         onClick={() => onPanelChange('settings')}
       >
