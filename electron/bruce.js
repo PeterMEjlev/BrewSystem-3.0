@@ -11,6 +11,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const path = require('path');
 const BruceAssistant = require('bruce-assistant');
 
@@ -358,7 +359,125 @@ async function main() {
     }
   );
 
+  // ── Keg status ────────────────────────────────────────────────────────
+
+  const SHEETS_CSV_URL =
+    'https://docs.google.com/spreadsheets/d/1c5CWo_-7lS9C0HSklylLVgFAT4OwADm2Svqfr9x28Do/export?format=csv&gid=0';
+
+  function fetchCSV(url) {
+    return new Promise((resolve, reject) => {
+      https.get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return fetchCSV(res.headers.location).then(resolve, reject);
+        }
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve(data));
+      }).on('error', reject);
+    });
+  }
+
+  function parseCSV(text) {
+    const lines = text.split('\n').filter(Boolean);
+    return lines.map((line) => {
+      const cols = [];
+      let cur = '';
+      let inQuotes = false;
+      for (const ch of line) {
+        if (ch === '"') { inQuotes = !inQuotes; continue; }
+        if (ch === ',' && !inQuotes) { cols.push(cur.trim()); cur = ''; continue; }
+        cur += ch;
+      }
+      cols.push(cur.trim());
+      return cols;
+    });
+  }
+
+  bruce.registerFunction(
+    'get_keg_status',
+    'Get the current status of all kegs — their contents, volume, date filled, notes, and ABV. Useful for checking what beer is on tap or how many kegs are filled. Set detail to "full" only if the user explicitly asks for every individual keg listed out.',
+    {
+      type: 'object',
+      properties: {
+        detail: { type: 'string', enum: ['summary', 'full'], description: 'Level of detail — "summary" groups kegs by type (default), "full" lists every keg individually' },
+      },
+      required: [],
+    },
+    async (args) => {
+      try {
+        const detail = (args && args.detail) || 'summary';
+        const text = await fetchCSV(SHEETS_CSV_URL);
+        const rows = parseCSV(text);
+        const dataRows = rows.slice(2);
+        const kegs = dataRows
+          .map((cols) => ({
+            number: cols[1] || '',
+            contents: cols[2] || '',
+            date: cols[3] || '',
+            note: cols[4] || '',
+            volume: cols[5] || '',
+            abv: cols[6] || '',
+          }))
+          .filter((k) => k.number);
+
+        const empty = kegs.filter((k) => ['???', 'Clean', 'Dirty'].includes(k.contents.trim()));
+        const beerKegs = kegs.filter((k) => !['???', 'Clean', 'Dirty', 'Starsan'].includes(k.contents.trim()));
+
+        if (detail === 'full') {
+          const filled = kegs.filter((k) => k.contents.trim() !== '???');
+          const lines = [`${filled.length} of ${kegs.length} kegs filled.`];
+          for (const keg of kegs) {
+            let desc = `Keg #${keg.number} (${keg.volume}): ${keg.contents}`;
+            if (keg.abv) desc += `, ${keg.abv} ABV`;
+            if (keg.date) desc += `, filled ${keg.date}`;
+            if (keg.note) desc += ` — ${keg.note}`;
+            lines.push(desc);
+          }
+          return lines.join('. ');
+        }
+
+        // Group beer kegs by contents
+        const groups = {};
+        for (const keg of beerKegs) {
+          const key = keg.contents.trim();
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(keg);
+        }
+
+        const lines = [`${beerKegs.length} kegs with beer out of ${kegs.length} total.`];
+
+        for (const [type, typeKegs] of Object.entries(groups)) {
+          const abvs = typeKegs.map((k) => k.abv).filter(Boolean);
+          const abvStr = abvs.length ? ` at ${abvs[0]} ABV` : '';
+          const kegNums = typeKegs.map((k) => `#${k.number}`).join(', ');
+          lines.push(`${typeKegs.length} ${type}${abvStr} (${kegNums})`);
+        }
+
+        if (empty.length > 0) {
+          lines.push(`${empty.length} empty or unassigned kegs.`);
+        }
+
+        return lines.join('. ');
+      } catch (err) {
+        console.error('[Bruce] Keg status error:', err);
+        return `Sorry, I couldn't fetch the keg data: ${err.message}`;
+      }
+    }
+  );
+
   // ── Logging ─────────────────────────────────────────────────────────────
+
+  // Buffer the user transcript so it prints before Bruce's first reply,
+  // even though Whisper delivers it asynchronously after Bruce starts responding.
+  let pendingTranscript = null;
+
+  const flushTranscript = () => {
+    if (pendingTranscript) {
+      console.log(`[You] ${pendingTranscript}`);
+      pendingTranscript = null;
+    }
+  };
 
   bruce.on('ready', () => console.log('[Bruce] Ready — listening for wake word'));
   bruce.on('wake', () => console.log('[Bruce] Wake word detected'));
@@ -366,8 +485,15 @@ async function main() {
   bruce.on('thinking', () => console.log('[Bruce] Thinking...'));
   bruce.on('speaking', () => console.log('[Bruce] Speaking...'));
   bruce.on('idle', () => console.log('[Bruce] Idle'));
-  bruce.on('transcript', (text) => console.log(`[Bruce] Transcript: ${text}`));
-  bruce.on('functionCall', (name, args) => console.log(`[Bruce] Function call: ${name}`, args));
+  bruce.on('transcript', (text) => { pendingTranscript = text; });
+  bruce.on('functionCall', (name, args) => {
+    flushTranscript();
+    console.log(`[Bruce] Function call: ${name}`, args);
+  });
+  bruce.on('reply', (text) => {
+    flushTranscript();
+    console.log(`[Bruce] ${text}`);
+  });
   bruce.on('error', (err) => console.error('[Bruce] Error:', err));
 
   await bruce.start();
