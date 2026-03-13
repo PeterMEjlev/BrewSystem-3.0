@@ -6,4 +6,7 @@ contextBridge.exposeInMainWorld('bruceAPI', {
     ipcRenderer.on('bruce-state', listener);
     return () => ipcRenderer.removeListener('bruce-state', listener);
   },
+  speak: (message) => {
+    ipcRenderer.send('bruce-speak', message);
+  },
 });

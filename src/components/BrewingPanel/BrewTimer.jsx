@@ -80,6 +80,15 @@ function BrewTimer({ timerState, isProduction }) {
     }
   }, [isProduction, timerState]);
 
+  // Notify Bruce when timer finishes
+  useEffect(() => {
+    if (isFinished) {
+      window.bruceAPI?.speak(
+        '[SYSTEM] The brew timer has just reached zero. Tell the user their timer is done.'
+      );
+    }
+  }, [isFinished]);
+
   const applySegmentDelta = (segment, delta) => {
     setTarget((prev) => {
       const h = Math.floor(prev / 3600);

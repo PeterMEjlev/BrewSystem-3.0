@@ -100,6 +100,28 @@ async function main() {
   });
   bruce.on('error', (err) => console.error('[Bruce] Error:', err));
 
+  // ── Listen for speak commands from Electron via stdin ──────────────────
+  let stdinBuffer = '';
+  process.stdin.setEncoding('utf-8');
+  process.stdin.on('data', (chunk) => {
+    stdinBuffer += chunk;
+    let newlineIdx;
+    while ((newlineIdx = stdinBuffer.indexOf('\n')) !== -1) {
+      const line = stdinBuffer.slice(0, newlineIdx).trim();
+      stdinBuffer = stdinBuffer.slice(newlineIdx + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.action === 'speak' && msg.message) {
+          console.log(`[Bruce] Speak request: ${msg.message}`);
+          bruce.speak(msg.message);
+        }
+      } catch (err) {
+        console.error('[Bruce] Failed to parse stdin message:', err.message);
+      }
+    }
+  });
+
   await bruce.start();
 }
 

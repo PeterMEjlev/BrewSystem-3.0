@@ -19,7 +19,7 @@ function startBruce() {
   const bruceScript = path.join(__dirname, 'bruce.js');
   bruceProcess = spawn(process.platform === 'win32' ? 'node.exe' : 'node', [bruceScript], {
     cwd: path.join(__dirname, '..'),
-    stdio: ['inherit', 'pipe', 'inherit'],
+    stdio: ['pipe', 'pipe', 'inherit'],
     env: { ...process.env },
   });
 
@@ -75,6 +75,13 @@ function waitForBackend(url, retries = 30, delay = 1000) {
     check();
   });
 }
+
+// IPC handler: frontend requests Bruce to speak
+ipcMain.on('bruce-speak', (_event, message) => {
+  if (bruceProcess && !bruceProcess.killed && bruceProcess.stdin.writable) {
+    bruceProcess.stdin.write(JSON.stringify({ action: 'speak', message }) + '\n');
+  }
+});
 
 async function createWindow() {
   const win = new BrowserWindow({
