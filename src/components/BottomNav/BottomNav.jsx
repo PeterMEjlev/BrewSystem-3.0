@@ -1,12 +1,18 @@
 import styles from './BottomNav.module.css';
 import BruceIndicator from './BruceIndicator';
+import { playNavigate } from '../../utils/sounds';
 
 function BottomNav({ activePanel, onPanelChange, bruceState }) {
+  const handleNav = (panel) => {
+    if (panel !== activePanel) playNavigate();
+    onPanelChange(panel);
+  };
+
   return (
     <nav className={styles.bottomNav}>
       <button
         className={`${styles.navBtn} ${activePanel === 'brewing' ? styles.active : ''}`}
-        onClick={() => onPanelChange('brewing')}
+        onClick={() => handleNav('brewing')}
       >
         <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path
@@ -21,7 +27,7 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
 
       <button
         className={`${styles.navBtn} ${activePanel === 'chart' ? styles.active : ''}`}
-        onClick={() => onPanelChange('chart')}
+        onClick={() => handleNav('chart')}
       >
         <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path
@@ -36,7 +42,7 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
 
       <button
         className={`${styles.navBtn} ${activePanel === 'recipe' ? styles.active : ''}`}
-        onClick={() => onPanelChange('recipe')}
+        onClick={() => handleNav('recipe')}
       >
         <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path
@@ -51,7 +57,7 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
 
       <button
         className={`${styles.navBtn} ${activePanel === 'tools' ? styles.active : ''}`}
-        onClick={() => onPanelChange('tools')}
+        onClick={() => handleNav('tools')}
       >
         <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path
@@ -66,7 +72,7 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
 
       <button
         className={`${styles.navBtn} ${activePanel === 'settings' ? styles.active : ''}`}
-        onClick={() => onPanelChange('settings')}
+        onClick={() => handleNav('settings')}
       >
         <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path

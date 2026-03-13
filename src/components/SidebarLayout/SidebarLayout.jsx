@@ -1,6 +1,12 @@
+import { playNavigate } from '../../utils/sounds';
 import styles from './SidebarLayout.module.css';
 
 function SidebarLayout({ title, items, activeItem, onItemChange, footer, children }) {
+  const handleItemChange = (id) => {
+    if (id !== activeItem) playNavigate();
+    onItemChange(id);
+  };
+
   return (
     <div className={styles.layout}>
       <aside className={styles.sidebar}>
@@ -10,7 +16,7 @@ function SidebarLayout({ title, items, activeItem, onItemChange, footer, childre
             <button
               key={item.id}
               className={`${styles.navItem} ${activeItem === item.id ? styles.active : ''}`}
-              onClick={() => onItemChange(item.id)}
+              onClick={() => handleItemChange(item.id)}
             >
               {item.icon && <span className={styles.icon}>{item.icon}</span>}
               <span className={styles.label}>{item.label}</span>

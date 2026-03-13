@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
+import { playClick } from '../../utils/sounds';
 import styles from './ToolsPage.module.css';
 
 const TOOL_ITEMS = [
@@ -160,7 +161,7 @@ function DilutionCalculator() {
 
       {error && <p className={styles.error}>{error}</p>}
 
-      <button className={styles.calcButton} onClick={calculate}>
+      <button className={styles.calcButton} onClick={() => { playClick(); calculate(); }}>
         Calculate
       </button>
 
@@ -246,11 +247,11 @@ function CarbonationCalculator() {
           <div className={styles.segmented}>
             <button
               className={`${styles.segBtn} ${pressureUnit === 'bar' ? styles.segActive : ''}`}
-              onClick={() => { setPressureUnit('bar'); setResult(null); }}
+              onClick={() => { playClick(); setPressureUnit('bar'); setResult(null); }}
             >bar</button>
             <button
               className={`${styles.segBtn} ${pressureUnit === 'psi' ? styles.segActive : ''}`}
-              onClick={() => { setPressureUnit('psi'); setResult(null); }}
+              onClick={() => { playClick(); setPressureUnit('psi'); setResult(null); }}
             >PSI</button>
           </div>
         </div>
@@ -286,7 +287,7 @@ function CarbonationCalculator() {
 
       {error && <p className={styles.error}>{error}</p>}
 
-      <button className={styles.calcButton} onClick={calculate}>
+      <button className={styles.calcButton} onClick={() => { playClick(); calculate(); }}>
         Calculate
       </button>
 
@@ -405,7 +406,7 @@ function HydrometerCalculator() {
 
       {error && <p className={styles.error}>{error}</p>}
 
-      <button className={styles.calcButton} onClick={calculate}>
+      <button className={styles.calcButton} onClick={() => { playClick(); calculate(); }}>
         Calculate
       </button>
 
@@ -630,8 +631,8 @@ function KegEditModal({ keg, onClose, onSave }) {
         {saveError && <p className={styles.error}>{saveError}</p>}
 
         <div className={styles.modalActions}>
-          <button className={styles.modalCancelBtn} onClick={onClose}>Cancel</button>
-          <button className={styles.calcButton} onClick={handleSave} disabled={saving}>
+          <button className={styles.modalCancelBtn} onClick={() => { playClick(); onClose(); }}>Cancel</button>
+          <button className={styles.calcButton} onClick={() => { playClick(); handleSave(); }} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -725,7 +726,7 @@ function KegStatus() {
           <button
             key={key}
             className={`${styles.sortBtn} ${sortKey === key ? styles.sortActive : ''}`}
-            onClick={() => handleSort(key)}
+            onClick={() => { playClick(); handleSort(key); }}
           >
             {label}
             {sortKey === key && (
@@ -755,7 +756,7 @@ function KegStatus() {
               key={keg.number}
               className={`${styles.kegCard} ${unknown ? styles.kegUnknown : ''}`}
               style={cardStyle}
-              onClick={() => setEditingKeg(keg)}
+              onClick={() => { playClick(); setEditingKeg(keg); }}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && setEditingKeg(keg)}

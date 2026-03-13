@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getTemperatureColor, getTemperatureGradient } from '../../utils/temperatureColor';
 import { useTheme } from '../../contexts/ThemeContext';
+import { playToggleOn, playToggleOff } from '../../utils/sounds';
 import styles from './PotCard.module.css';
 
 const DEFAULT_REG_CONFIG = {
@@ -27,10 +28,12 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   }, [potState.sv, potState.efficiency]);
 
   const handleTogglePower = () => {
+    potState.heaterOn ? playToggleOff() : playToggleOn();
     onUpdate({ heaterOn: !potState.heaterOn });
   };
 
   const handleToggleRegulation = () => {
+    potState.regulationEnabled ? playToggleOff() : playToggleOn();
     onUpdate({ regulationEnabled: !potState.regulationEnabled });
   };
 

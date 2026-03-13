@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { playToggleOn, playToggleOff } from '../../utils/sounds';
 import styles from './PumpCard.module.css';
 
 function PumpCard({ name, pumpState, onUpdate }) {
@@ -11,6 +12,7 @@ function PumpCard({ name, pumpState, onUpdate }) {
   }, [pumpState.speed]);
 
   const handleTogglePower = () => {
+    pumpState.on ? playToggleOff() : playToggleOn();
     onUpdate({ on: !pumpState.on });
   };
 

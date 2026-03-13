@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { playClick } from '../../utils/sounds';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './Settings.module.css';
 
@@ -255,7 +256,7 @@ function Settings() {
   const steps = settings.app.auto_efficiency.steps;
 
   const resetButton = (
-    <button className={styles.resetAllBtn} onClick={handleResetAllSettings}>
+    <button className={styles.resetAllBtn} onClick={() => { playClick(); handleResetAllSettings(); }}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={styles.resetIcon}>
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
           d="M12 9v2m0 4h.01M5.07 19H19a2 2 0 001.75-2.96l-6.93-12a2 2 0 00-3.5 0l-6.93 12A2 2 0 005.07 19z"
@@ -811,7 +812,7 @@ function Settings() {
               />
             </div>
 
-            <button className={styles.resetBtn} onClick={handleResetColors}>
+            <button className={styles.resetBtn} onClick={() => { playClick(); handleResetColors(); }}>
               Reset Colors to Defaults
             </button>
           </div>

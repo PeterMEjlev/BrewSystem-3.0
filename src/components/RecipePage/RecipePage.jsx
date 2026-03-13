@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { playClick, playNavigate } from '../../utils/sounds';
 import styles from './RecipePage.module.css';
 
 function RecipePage() {
@@ -97,6 +98,7 @@ function RecipePage() {
   };
 
   const goBack = () => {
+    playNavigate();
     setSelectedRecipe(null);
     sessionStorage.removeItem('selectedRecipe');
     setError(null);
@@ -270,7 +272,7 @@ function RecipePage() {
 
         {recipe.fermentables.length > 0 && (
           <div className={styles.section}>
-            <button className={styles.sectionTitle} onClick={() => toggleSection('fermentables')}>
+            <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('fermentables'); }}>
               <span>🌾 Fermentables <span className={styles.sectionSubtitle}>{totalFermentablesKg.toFixed(2)} kg</span></span>
               <svg className={`${styles.collapseChevron} ${collapsed.fermentables ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6 9l6 6 6-6" />
@@ -302,7 +304,7 @@ function RecipePage() {
 
         {recipe.hops.length > 0 && (
           <div className={styles.section}>
-            <button className={styles.sectionTitle} onClick={() => toggleSection('hops')}>
+            <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('hops'); }}>
               <span>🌿 Hops <span className={styles.sectionSubtitle}>{totalHopsG.toFixed(1)} g{hopsGperL != null ? ` · ${hopsGperL.toFixed(1)} g/L` : ''}</span></span>
               <svg className={`${styles.collapseChevron} ${collapsed.hops ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6 9l6 6 6-6" />
@@ -338,7 +340,7 @@ function RecipePage() {
 
         {recipe.yeast.length > 0 && (
           <div className={styles.section}>
-            <button className={styles.sectionTitle} onClick={() => toggleSection('yeast')}>
+            <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('yeast'); }}>
               <span>🧫 Yeast</span>
               <svg className={`${styles.collapseChevron} ${collapsed.yeast ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6 9l6 6 6-6" />
@@ -375,7 +377,7 @@ function RecipePage() {
     >
       <div className={styles.header}>
         <h2 className={styles.title}>Recipes</h2>
-        <button className={styles.refreshBtn} onClick={fetchRecipes} disabled={loading}>
+        <button className={styles.refreshBtn} onClick={() => { playClick(); fetchRecipes(); }} disabled={loading}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 4v6h-6" />
             <path d="M1 20v-6h6" />
@@ -389,7 +391,7 @@ function RecipePage() {
       {error && (
         <div className={styles.errorCard}>
           <p className={styles.error}>{error}</p>
-          <button className={styles.retryBtn} onClick={fetchRecipes}>Retry</button>
+          <button className={styles.retryBtn} onClick={() => { playClick(); fetchRecipes(); }}>Retry</button>
         </div>
       )}
 
@@ -405,7 +407,7 @@ function RecipePage() {
             <button
               key={r.id}
               className={styles.recipeListItem}
-              onClick={() => selectRecipe(r.id)}
+              onClick={() => { playNavigate(); selectRecipe(r.id); }}
               disabled={detailLoading}
             >
               <div className={styles.recipeListInfo}>
