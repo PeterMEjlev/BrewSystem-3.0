@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
-import { playClick } from '../../utils/sounds';
+import { playClick, getVolumes, setMasterVolume, setButtonVolume, setBruceVolume } from '../../utils/sounds';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './Settings.module.css';
 
@@ -46,6 +46,17 @@ const SETTINGS_ITEMS = [
     ),
   },
   {
+    id: 'sound',
+    label: 'Sound',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"
+        />
+      </svg>
+    ),
+  },
+  {
     id: 'about',
     label: 'About',
     icon: (
@@ -57,9 +68,122 @@ const SETTINGS_ITEMS = [
   },
 ];
 
+function SoundSettings() {
+  const [vols, setVols] = useState(getVolumes);
+
+  const handleMaster = (e) => {
+    const v = parseFloat(e.target.value);
+    setMasterVolume(v);
+    setVols(getVolumes());
+  };
+  const handleButtons = (e) => {
+    const v = parseFloat(e.target.value);
+    setButtonVolume(v);
+    setVols(getVolumes());
+  };
+  const handleBruce = (e) => {
+    const v = parseFloat(e.target.value);
+    setBruceVolume(v);
+    setVols(getVolumes());
+  };
+
+  const pct = (v) => `${Math.round(v * 100)}%`;
+
+  return (
+    <div className={styles.sectionContent}>
+      <div className={styles.volumeGroup}>
+        <div className={styles.volumeRow}>
+          <label className={styles.volumeLabel}>
+            Master Volume
+            <span className={styles.volumeValue}>{pct(vols.master)}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={vols.master}
+            onChange={handleMaster}
+            className={styles.volumeSlider}
+            style={{
+              background: `linear-gradient(to right,
+                var(--color-accent-blue) 0%,
+                var(--color-accent-blue) ${vols.master * 100}%,
+                var(--color-border-light) ${vols.master * 100}%,
+                var(--color-border-light) 100%)`,
+            }}
+          />
+        </div>
+      </div>
+
+      <div className={styles.subsectionTitle}>Individual Controls</div>
+
+      <div className={styles.volumeGroup}>
+        <div className={styles.volumeRow}>
+          <label className={styles.volumeLabel}>
+            Button Sounds
+            <span className={styles.volumeValue}>{pct(vols.buttons)}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={vols.buttons}
+            onChange={handleButtons}
+            className={styles.volumeSlider}
+            style={{
+              background: `linear-gradient(to right,
+                var(--color-accent-green) 0%,
+                var(--color-accent-green) ${vols.buttons * 100}%,
+                var(--color-border-light) ${vols.buttons * 100}%,
+                var(--color-border-light) 100%)`,
+            }}
+          />
+          <span className={styles.volumeEffective}>
+            Effective: {pct(vols.master * vols.buttons)}
+          </span>
+        </div>
+
+        <div className={styles.volumeRow}>
+          <label className={styles.volumeLabel}>
+            Bruce Speech
+            <span className={styles.volumeValue}>{pct(vols.bruce)}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={vols.bruce}
+            onChange={handleBruce}
+            className={styles.volumeSlider}
+            style={{
+              background: `linear-gradient(to right,
+                var(--color-accent-orange) 0%,
+                var(--color-accent-orange) ${vols.bruce * 100}%,
+                var(--color-border-light) ${vols.bruce * 100}%,
+                var(--color-border-light) 100%)`,
+            }}
+          />
+          <span className={styles.volumeEffective}>
+            Effective: {pct(vols.master * vols.bruce)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Settings() {
   const { theme, updateTheme, resetTheme } = useTheme();
-  const [activeSection, setActiveSection] = useState('program');
+  const [activeSection, setActiveSection] = useState(() => {
+    try { return sessionStorage.getItem('settingsSection') || 'program'; } catch { return 'program'; }
+  });
+  const handleSectionChange = (id) => {
+    setActiveSection(id);
+    try { sessionStorage.setItem('settingsSection', id); } catch {}
+  };
   const wrapperRef = useRef(null);
   const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false, scrollEl: null });
 
@@ -271,7 +395,7 @@ function Settings() {
       title="Settings"
       items={SETTINGS_ITEMS}
       activeItem={activeSection}
-      onItemChange={setActiveSection}
+      onItemChange={handleSectionChange}
       footer={resetButton}
     >
       <div
@@ -817,6 +941,8 @@ function Settings() {
             </button>
           </div>
         )}
+
+        {activeSection === 'sound' && <SoundSettings />}
 
         {activeSection === 'about' && (
           <div className={styles.sectionContent}>

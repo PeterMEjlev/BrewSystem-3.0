@@ -115,6 +115,9 @@ async function main() {
         if (msg.action === 'speak' && msg.message) {
           console.log(`[Bruce] Speak request: ${msg.message}`);
           bruce.speak(msg.message);
+        } else if (msg.action === 'set-volume' && msg.gain != null) {
+          console.log(`[Bruce] Volume set to ${msg.gain}`);
+          bruce.setVolume(msg.gain);
         }
       } catch (err) {
         console.error('[Bruce] Failed to parse stdin message:', err.message);

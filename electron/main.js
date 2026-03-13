@@ -83,6 +83,13 @@ ipcMain.on('bruce-speak', (_event, message) => {
   }
 });
 
+// IPC handler: frontend sets Bruce speech volume
+ipcMain.on('bruce-volume', (_event, gain) => {
+  if (bruceProcess && !bruceProcess.killed && bruceProcess.stdin.writable) {
+    bruceProcess.stdin.write(JSON.stringify({ action: 'set-volume', gain }) + '\n');
+  }
+});
+
 async function createWindow() {
   const win = new BrowserWindow({
     icon: path.join(__dirname, '..', 'Icon_App.png'),

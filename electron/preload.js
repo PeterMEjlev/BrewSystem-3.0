@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('bruceAPI', {
   speak: (message) => {
     ipcRenderer.send('bruce-speak', message);
   },
+  setVolume: (gain) => {
+    ipcRenderer.send('bruce-volume', gain);
+  },
 });
