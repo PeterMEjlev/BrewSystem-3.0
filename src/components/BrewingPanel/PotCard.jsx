@@ -29,7 +29,12 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
 
   const handleTogglePower = () => {
     potState.heaterOn ? playToggleOff() : playToggleOn();
-    onUpdate({ heaterOn: !potState.heaterOn });
+    // When turning off, also disable regulation so it doesn't immediately re-enable the heater
+    if (potState.heaterOn && potState.regulationEnabled) {
+      onUpdate({ heaterOn: false, regulationEnabled: false });
+    } else {
+      onUpdate({ heaterOn: !potState.heaterOn });
+    }
   };
 
   const handleToggleRegulation = () => {
