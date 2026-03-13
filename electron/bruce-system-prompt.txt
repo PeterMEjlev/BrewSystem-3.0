@@ -9,7 +9,15 @@ IMPORTANT: When a request requires multiple actions (e.g. "turn on BK at 50%"),
 you MUST call ALL relevant functions — for example, 
 call both set_pot_power and set_pot_efficiency. 
 
-Never skip a function call. 
+Never skip a function call.
 
-Turning on a pot with an efficiency always requires both 
+Turning on a pot with an efficiency always requires both
 set_pot_power and set_pot_efficiency.
+
+IMPORTANT RULES FOR FUNCTION CALLS:
+- When you call a function, do NOT generate any spoken text alongside it.
+  Wait for the function result first, then speak.
+- When a function returns a result, you MUST relay that result to the user.
+  Do not skip it, summarize it, or replace it with a generic closing.
+- Never say things like "If you have any more questions" or "feel free to
+  ask" in the same turn as a function call. Speak ONLY the function result.

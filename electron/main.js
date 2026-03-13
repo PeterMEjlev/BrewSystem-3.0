@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { app, BrowserWindow, globalShortcut } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
@@ -11,13 +11,36 @@ const LOAD_URL = isDev ? 'http://localhost:5173' : 'http://localhost:8000';
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
 
 let bruceProcess = null;
+let mainWindow = null;
+
+const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
 
 function startBruce() {
   const bruceScript = path.join(__dirname, 'bruce.js');
   bruceProcess = spawn(process.platform === 'win32' ? 'node.exe' : 'node', [bruceScript], {
     cwd: path.join(__dirname, '..'),
-    stdio: 'inherit',
+    stdio: ['inherit', 'pipe', 'inherit'],
     env: { ...process.env },
+  });
+
+  // Parse stdout for state messages, forward the rest as normal logs
+  let buffer = '';
+  bruceProcess.stdout.on('data', (chunk) => {
+    buffer += chunk.toString();
+    let newlineIdx;
+    while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, newlineIdx);
+      buffer = buffer.slice(newlineIdx + 1);
+
+      if (line.startsWith(BRUCE_STATE_PREFIX)) {
+        const state = line.slice(BRUCE_STATE_PREFIX.length).trim();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('bruce-state', state);
+        }
+      } else {
+        process.stdout.write(line + '\n');
+      }
+    }
   });
 
   bruceProcess.on('error', (err) => {
@@ -63,8 +86,11 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
+
+  mainWindow = win;
 
   win.setMenu(null);
 

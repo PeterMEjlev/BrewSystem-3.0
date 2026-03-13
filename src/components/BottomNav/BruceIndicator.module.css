@@ -1,0 +1,93 @@
+.indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  min-width: 56px;
+}
+
+/* ── Bar container ─────────────────────────────── */
+
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+}
+
+.bar {
+  display: block;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--color-nav-inactive);
+  transition: background 0.3s, height 0.3s;
+}
+
+/* ── Idle: short static bars ───────────────────── */
+
+.idle .bar {
+  height: 6px;
+  background: var(--color-nav-inactive);
+  animation: none;
+}
+
+/* ── Listening: pulsing blue bars ──────────────── */
+
+.listening .bar {
+  background: var(--color-accent-blue);
+  animation: listenPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes listenPulse {
+  0%, 100% { height: 6px; }
+  50% { height: 22px; }
+}
+
+/* ── Thinking: sequential amber wave ───────────── */
+
+.thinking .bar {
+  background: var(--color-accent-orange);
+  animation: thinkWave 1.4s ease-in-out infinite;
+}
+
+@keyframes thinkWave {
+  0%, 100% { height: 6px; }
+  30% { height: 18px; }
+  60% { height: 6px; }
+}
+
+/* ── Speaking: lively green equalizer ──────────── */
+
+.speaking .bar {
+  background: var(--color-accent-green);
+  animation: speakBounce 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes speakBounce {
+  0% { height: 4px; }
+  100% { height: 26px; }
+}
+
+/* ── Label ─────────────────────────────────────── */
+
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-nav-inactive);
+  transition: color 0.3s;
+}
+
+.label.listening {
+  color: var(--color-accent-blue);
+}
+
+.label.thinking {
+  color: var(--color-accent-orange);
+}
+
+.label.speaking {
+  color: var(--color-accent-green);
+}

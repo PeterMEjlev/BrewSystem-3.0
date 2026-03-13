@@ -65,6 +65,13 @@ async function main() {
   brewFunctions.register(bruce, apiCall);
   toolFunctions.register(bruce, apiCall);
 
+  // ── State broadcasting ──────────────────────────────────────────────────
+
+  const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
+  function emitState(state) {
+    process.stdout.write(`${BRUCE_STATE_PREFIX}${state}\n`);
+  }
+
   // ── Logging ─────────────────────────────────────────────────────────────
 
   let pendingTranscript = null;
@@ -76,12 +83,12 @@ async function main() {
     }
   };
 
-  bruce.on('ready', () => console.log('[Bruce] Ready — listening for wake word'));
-  bruce.on('wake', () => console.log('[Bruce] Wake word detected'));
-  bruce.on('listening', () => console.log('[Bruce] Listening...'));
-  bruce.on('thinking', () => console.log('[Bruce] Thinking...'));
-  bruce.on('speaking', () => console.log('[Bruce] Speaking...'));
-  bruce.on('idle', () => console.log('[Bruce] Idle'));
+  bruce.on('ready', () => { emitState('idle'); console.log('[Bruce] Ready — listening for wake word'); });
+  bruce.on('wake', () => { console.log('[Bruce] Wake word detected'); });
+  bruce.on('listening', () => { emitState('listening'); console.log('[Bruce] Listening...'); });
+  bruce.on('thinking', () => { emitState('thinking'); console.log('[Bruce] Thinking...'); });
+  bruce.on('speaking', () => { emitState('speaking'); console.log('[Bruce] Speaking...'); });
+  bruce.on('idle', () => { emitState('idle'); console.log('[Bruce] Idle'); });
   bruce.on('transcript', (text) => { pendingTranscript = text; });
   bruce.on('functionCall', (name, args) => {
     flushTranscript();

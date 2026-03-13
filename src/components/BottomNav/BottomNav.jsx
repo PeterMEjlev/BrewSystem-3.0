@@ -1,6 +1,7 @@
 import styles from './BottomNav.module.css';
+import BruceIndicator from './BruceIndicator';
 
-function BottomNav({ activePanel, onPanelChange }) {
+function BottomNav({ activePanel, onPanelChange, bruceState }) {
   return (
     <nav className={styles.bottomNav}>
       <button
@@ -78,6 +79,9 @@ function BottomNav({ activePanel, onPanelChange }) {
         </svg>
         <span className={styles.label}>Settings</span>
       </button>
+
+      <div className={styles.divider} />
+      <BruceIndicator state={bruceState} />
     </nav>
   );
 }

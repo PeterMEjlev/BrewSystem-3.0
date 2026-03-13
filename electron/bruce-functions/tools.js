@@ -98,6 +98,74 @@ function register(bruce, apiCall) {
       return `The corrected gravity is ${corrected.toFixed(3)} (read ${sg.toFixed(3)} at ${sample_temp}°C, calibrated for ${calibration_temp}°C).`;
     }
   );
+
+  // ── Carbonation calculator ─────────────────────────────────────────────
+
+  const CARBONATION_STYLES = {
+    'British Style Ales':      '1.5 – 2.0',
+    'Belgian Ales':            '1.9 – 2.4',
+    'American Ales and Lager': '2.2 – 2.7',
+    'Porter, Stout':           '1.7 – 2.3',
+    'European Lagers':         '2.2 – 2.7',
+    'Fruit Lambic':            '3.0 – 4.5',
+    'Lambic':                  '2.4 – 2.8',
+    'German Wheat Beer':       '3.3 – 4.5',
+  };
+
+  bruce.registerFunction(
+    'carbonation_calculator',
+    'Calculate the CO2 regulator pressure needed to force-carbonate a keg at a given temperature. Provide the desired volumes of CO2 and the keg temperature in °C. If the user mentions a beer style instead of an exact CO2 volume, call this function with ONLY the beer_style parameter (and optionally keg_temp) — do NOT guess a CO2 volume. The function will return the recommended range so you can ask the user to pick a value. IMPORTANT: Once the user picks a CO2 volume, you MUST call this function again with co2_volumes and keg_temp to get the exact pressure — do NOT calculate the pressure yourself.',
+    {
+      type: 'object',
+      properties: {
+        co2_volumes: { type: 'number', description: 'Desired volumes of CO2 (e.g. 2.4)' },
+        keg_temp: { type: 'number', description: 'Keg temperature in °C' },
+        beer_style: { type: 'string', description: 'Beer style name if the user specified a style instead of an exact CO2 volume (e.g. "IPA", "stout", "Belgian", "wheat beer", "lager")' },
+      },
+      required: [],
+    },
+    async ({ co2_volumes, keg_temp, beer_style } = {}) => {
+      // If a beer style was given, look up the range and ask for clarification
+      if (beer_style && co2_volumes == null) {
+        const styleLower = beer_style.toLowerCase();
+        const match = Object.entries(CARBONATION_STYLES).find(([key]) =>
+          key.toLowerCase().includes(styleLower) || styleLower.includes(key.toLowerCase())
+        );
+
+        if (match) {
+          const [name, range] = match;
+          return `${name} is typically carbonated at ${range} volumes of CO2. Ask the user what CO2 volume they'd like within that range, then call this function again with co2_volumes and keg_temp to get the exact pressure.`;
+        }
+
+        // No exact match — list all styles
+        const list = Object.entries(CARBONATION_STYLES)
+          .map(([name, range]) => `${name}: ${range} vol`)
+          .join('. ');
+        return `I'm not sure which style that matches. Here are the common guidelines: ${list}. Ask the user what CO2 volume they'd like, then call this function again with co2_volumes and keg_temp to get the exact pressure.`;
+      }
+
+      if (co2_volumes == null || keg_temp == null) {
+        return 'I need both the desired volumes of CO2 and the keg temperature to calculate the pressure.';
+      }
+
+      if (co2_volumes <= 0) return 'Volumes of CO2 must be greater than zero.';
+
+      // Formula uses °F internally
+      const T = keg_temp * 9 / 5 + 32;
+      const V = co2_volumes;
+      const psi =
+        -16.6999
+        - 0.0101059 * T
+        + 0.00116512 * T * T
+        + 0.173354 * T * V
+        + 4.24267 * V
+        - 0.0684226 * V * V;
+
+      const bar = psi * 0.0689476;
+
+      return `[SYSTEM] You MUST speak the following result to the user: To carbonate at ${co2_volumes} volumes of CO2 with a keg at ${keg_temp}°C, set your regulator to ${bar.toFixed(2)} bar (${psi.toFixed(1)} PSI).`;
+    }
+  );
 }
 
 module.exports = { register };

@@ -57,3 +57,10 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
+.divider {
+  width: 1px;
+  height: 36px;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
