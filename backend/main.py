@@ -89,7 +89,13 @@ def _get_timer_seconds() -> int:
         elapsed += time.monotonic() - _timer_state["started_at"]
     elapsed = int(elapsed)
     if _timer_state["target"] > 0:
-        return max(_timer_state["target"] - elapsed, 0)
+        remaining = max(_timer_state["target"] - elapsed, 0)
+        # Auto-stop when countdown reaches zero
+        if remaining == 0 and _timer_state["running"]:
+            _timer_state["elapsed"] = float(_timer_state["target"])
+            _timer_state["started_at"] = None
+            _timer_state["running"] = False
+        return remaining
     return elapsed
 
 # Shared control state — the single source of truth for all connected clients

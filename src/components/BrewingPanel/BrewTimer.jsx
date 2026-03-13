@@ -20,6 +20,7 @@ function BrewTimer({ timerState, isProduction }) {
   const [target, setTarget] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [isFinished, setIsFinished] = useState(false);
   const intervalRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const localActionRef = useRef(false);
@@ -60,11 +61,24 @@ function BrewTimer({ timerState, isProduction }) {
   useEffect(() => {
     if (isProduction) return;
     if (target > 0) {
-      setDisplaySeconds(Math.max(target - elapsed, 0));
+      const remaining = Math.max(target - elapsed, 0);
+      setDisplaySeconds(remaining);
+      if (remaining === 0 && isRunning) {
+        setIsRunning(false);
+        setIsFinished(true);
+      }
     } else {
       setDisplaySeconds(elapsed);
     }
-  }, [elapsed, target, isProduction]);
+  }, [elapsed, target, isProduction, isRunning]);
+
+  // Detect finished state from backend poll
+  useEffect(() => {
+    if (!isProduction || !timerState) return;
+    if (timerState.target > 0 && timerState.seconds === 0 && !timerState.running) {
+      setIsFinished(true);
+    }
+  }, [isProduction, timerState]);
 
   const applySegmentDelta = (segment, delta) => {
     setTarget((prev) => {
@@ -91,6 +105,10 @@ function BrewTimer({ timerState, isProduction }) {
   };
 
   const handleToggle = () => {
+    if (isFinished) {
+      handleReset();
+      return;
+    }
     localActionRef.current = true;
     if (isRunning) {
       if (isProduction) postTimer('stop');
@@ -105,6 +123,7 @@ function BrewTimer({ timerState, isProduction }) {
     localActionRef.current = true;
     if (isProduction) postTimer('reset');
     setIsRunning(false);
+    setIsFinished(false);
     setElapsed(0);
     setTarget(0);
     setDisplaySeconds(0);
@@ -168,6 +187,7 @@ function BrewTimer({ timerState, isProduction }) {
   const mode = target > 0 ? 'Timer' : 'Stopwatch';
 
   const getHint = () => {
+    if (isFinished) return 'Timer Complete! • Tap to Dismiss';
     if (canAdjust) return 'Drag to Set • Tap to Start';
     if (isRunning) return 'Tap to Pause • Hold to Reset';
     return 'Tap to Resume • Hold to Reset';
@@ -183,7 +203,7 @@ function BrewTimer({ timerState, isProduction }) {
 
   return (
     <div
-      className={`${styles.brewTimer} ${isRunning ? styles.running : styles.paused}`}
+      className={`${styles.brewTimer} ${isFinished ? styles.finished : isRunning ? styles.running : styles.paused}`}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerLeave={cancelLongPress}
