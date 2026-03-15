@@ -5,6 +5,24 @@
   gap: 6px;
   padding: 8px 14px;
   min-width: 56px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: var(--transition-fast);
+  touch-action: manipulation;
+}
+
+.indicator:active {
+  transform: scale(0.95);
+}
+
+.indicator:hover {
+  background: rgba(100, 116, 139, 0.1);
+}
+
+.indicator.active {
+  background: linear-gradient(135deg, rgba(240, 76, 101, 0.1), rgba(245, 131, 97, 0.1));
 }
 
 /* ── Bar container ─────────────────────────────── */

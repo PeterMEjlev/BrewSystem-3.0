@@ -6,6 +6,13 @@ contextBridge.exposeInMainWorld('bruceAPI', {
     ipcRenderer.on('bruce-state', listener);
     return () => ipcRenderer.removeListener('bruce-state', listener);
   },
+  onMessage: (callback) => {
+    const listener = (_event, json) => {
+      try { callback(JSON.parse(json)); } catch {}
+    };
+    ipcRenderer.on('bruce-message', listener);
+    return () => ipcRenderer.removeListener('bruce-message', listener);
+  },
   speak: (message) => {
     ipcRenderer.send('bruce-speak', message);
   },

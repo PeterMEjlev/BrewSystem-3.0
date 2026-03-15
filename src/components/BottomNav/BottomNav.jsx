@@ -102,7 +102,11 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
       </button>
 
       <div className={styles.divider} />
-      <BruceIndicator state={bruceState} />
+      <BruceIndicator
+        state={bruceState}
+        active={activePanel === 'bruce'}
+        onClick={() => handleNav('bruce')}
+      />
     </nav>
   );
 }

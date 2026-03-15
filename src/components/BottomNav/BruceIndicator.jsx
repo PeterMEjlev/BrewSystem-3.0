@@ -3,7 +3,7 @@ import styles from './BruceIndicator.module.css';
 
 const BAR_COUNT = 5;
 
-function BruceIndicator({ state }) {
+function BruceIndicator({ state, active, onClick }) {
   const stateClass = styles[state] || styles.idle;
 
   const label =
@@ -13,7 +13,11 @@ function BruceIndicator({ state }) {
     'Bruce';
 
   return (
-    <div className={styles.indicator}>
+    <button
+      className={`${styles.indicator} ${active ? styles.active : ''}`}
+      onClick={onClick}
+      type="button"
+    >
       <div className={`${styles.bars} ${stateClass}`}>
         {Array.from({ length: BAR_COUNT }, (_, i) => (
           <span
@@ -24,7 +28,7 @@ function BruceIndicator({ state }) {
         ))}
       </div>
       <span className={`${styles.label} ${stateClass}`}>{label}</span>
-    </div>
+    </button>
   );
 }
 

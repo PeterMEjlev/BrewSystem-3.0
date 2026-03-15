@@ -68,36 +68,114 @@ async function main() {
   // ── State broadcasting ──────────────────────────────────────────────────
 
   const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
+  const BRUCE_MSG_PREFIX = '@@BRUCE_MSG:';
+
   function emitState(state) {
     process.stdout.write(`${BRUCE_STATE_PREFIX}${state}\n`);
   }
 
+  function emitMessage(msg) {
+    process.stdout.write(`${BRUCE_MSG_PREFIX}${JSON.stringify(msg)}\n`);
+  }
+
   // ── Logging ─────────────────────────────────────────────────────────────
+  //
+  // The OpenAI Realtime API can deliver the final user transcript well
+  // AFTER Bruce has already started responding.  To guarantee "[You]"
+  // prints before any Bruce content, we queue content output (replies,
+  // function calls) until the transcript arrives.  State emissions
+  // (emitState) are never queued — they drive the live UI indicator.
+  // The idle event drains the queue as a safety net if the transcript
+  // never arrives.
 
   let pendingTranscript = null;
+  let waitingForTranscript = false;
+  let transcriptFlushed = false;    // true once [You] has been printed for this turn
+  let outputQueue = [];
 
   const flushTranscript = () => {
     if (pendingTranscript) {
       console.log(`[You] ${pendingTranscript}`);
+      emitMessage({ type: 'user', content: pendingTranscript, timestamp: Date.now() });
       pendingTranscript = null;
+      transcriptFlushed = true;
+    }
+  };
+
+  const drainQueue = () => {
+    waitingForTranscript = false;
+    const queued = outputQueue;
+    outputQueue = [];
+    for (const fn of queued) fn();
+  };
+
+  const bruceOutput = (fn) => {
+    if (waitingForTranscript) {
+      outputQueue.push(fn);
+    } else {
+      fn();
     }
   };
 
   bruce.on('ready', () => { emitState('idle'); console.log('[Bruce] Ready — listening for wake word'); });
   bruce.on('wake', () => { console.log('[Bruce] Wake word detected'); });
-  bruce.on('listening', () => { emitState('listening'); console.log('[Bruce] Listening...'); });
-  bruce.on('thinking', () => { emitState('thinking'); console.log('[Bruce] Thinking...'); });
-  bruce.on('speaking', () => { emitState('speaking'); console.log('[Bruce] Speaking...'); });
-  bruce.on('idle', () => { emitState('idle'); console.log('[Bruce] Idle'); });
-  bruce.on('transcript', (text) => { pendingTranscript = text; });
+
+  bruce.on('listening', () => {
+    // Drain any remaining output from the previous turn before resetting
+    flushTranscript();
+    drainQueue();
+    pendingTranscript = null;
+    transcriptFlushed = false;
+    emitState('listening');
+    console.log('[Bruce] Listening...');
+  });
+
+  bruce.on('thinking', () => {
+    if (!pendingTranscript && !waitingForTranscript && !transcriptFlushed) {
+      // First thinking of this turn, transcript hasn't arrived — buffer
+      waitingForTranscript = true;
+    } else {
+      flushTranscript();
+    }
+    emitState('thinking');
+    console.log('[Bruce] Thinking...');
+  });
+
+  bruce.on('speaking', () => {
+    emitState('speaking');
+    bruceOutput(() => { console.log('[Bruce] Speaking...'); });
+  });
+
+  bruce.on('idle', () => {
+    // End of turn — flush anything still pending
+    flushTranscript();
+    drainQueue();
+    emitState('idle');
+    console.log('[Bruce] Idle');
+  });
+
+  bruce.on('transcript', (text) => {
+    pendingTranscript = text;
+    if (waitingForTranscript) {
+      flushTranscript();
+      drainQueue();
+    }
+  });
+
   bruce.on('functionCall', (name, args) => {
-    flushTranscript();
-    console.log(`[Bruce] Function call: ${name}`, args);
+    bruceOutput(() => {
+      console.log(`[Bruce] Function call: ${name}`, args);
+      emitMessage({ type: 'function_call', functionName: name, functionArgs: args, timestamp: Date.now() });
+    });
   });
+
   bruce.on('reply', (text) => {
-    flushTranscript();
-    console.log(`[Bruce] ${text}`);
+    bruceOutput(() => {
+      console.log(`[Bruce] ${text}`);
+      emitMessage({ type: 'assistant', content: text, timestamp: Date.now() });
+    });
   });
+
   bruce.on('error', (err) => console.error('[Bruce] Error:', err));
 
   // ── Listen for speak commands from Electron via stdin ──────────────────

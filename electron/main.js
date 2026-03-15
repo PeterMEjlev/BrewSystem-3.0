@@ -14,6 +14,7 @@ let bruceProcess = null;
 let mainWindow = null;
 
 const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
+const BRUCE_MSG_PREFIX = '@@BRUCE_MSG:';
 
 function startBruce() {
   const bruceScript = path.join(__dirname, 'bruce.js');
@@ -36,6 +37,11 @@ function startBruce() {
         const state = line.slice(BRUCE_STATE_PREFIX.length).trim();
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('bruce-state', state);
+        }
+      } else if (line.startsWith(BRUCE_MSG_PREFIX)) {
+        const json = line.slice(BRUCE_MSG_PREFIX.length).trim();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('bruce-message', json);
         }
       } else {
         process.stdout.write(line + '\n');

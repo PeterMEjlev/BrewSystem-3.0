@@ -1,0 +1,203 @@
+/* ── Page layout ──────────────────────────────── */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 32px 16px;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.clearBtn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 8px 16px;
+  transition: var(--transition-fast);
+}
+
+.clearBtn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ── Timeline ─────────────────────────────────── */
+
+.timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Date divider ─────────────────────────────── */
+
+.dateDivider {
+  text-align: center;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  padding: 12px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Message base ─────────────────────────────── */
+
+.message {
+  max-width: 720px;
+  padding: 10px 0;
+}
+
+/* ── Sender row ───────────────────────────────── */
+
+.userBubble,
+.bruceBubble,
+.fnBubble {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.senderLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.userBubble .senderLabel {
+  color: var(--color-accent-blue);
+}
+
+.bruceBubble .senderLabel {
+  color: var(--color-accent-green);
+}
+
+.fnBubble .senderLabel {
+  color: var(--color-accent-orange);
+}
+
+.timestamp {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* ── Content blocks ───────────────────────────── */
+
+.userContent {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  padding: 10px 14px;
+  background: rgba(99, 164, 255, 0.08);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-accent-blue);
+}
+
+.bruceContent {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  padding: 10px 14px;
+  background: rgba(74, 222, 128, 0.08);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-accent-green);
+}
+
+/* ── Function call ────────────────────────────── */
+
+.fnMessage {
+  opacity: 0.85;
+}
+
+.fnContent {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.06);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-accent-orange);
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.fnName {
+  color: var(--color-accent-orange);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+}
+
+.fnArgs {
+  margin: 6px 0 2px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fnResult {
+  margin-top: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.fnResultLabel {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-orange);
+}
+
+/* ── Empty state ──────────────────────────────── */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--color-text-muted);
+  opacity: 0.4;
+  margin-bottom: 16px;
+}
+
+.emptyText {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  margin: 0 0 8px;
+}
+
+.emptyHint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
