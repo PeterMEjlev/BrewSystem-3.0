@@ -117,6 +117,13 @@ function sortKegs(kegs, sortKey, sortAsc) {
 
 const LONG_PRESS_MS = 500;
 
+function todayDDMMYYYY() {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
 function KegEditModal({ kegs, onClose, onSave }) {
   const isBulk = kegs.length > 1;
   const first = kegs[0];
@@ -147,15 +154,18 @@ function KegEditModal({ kegs, onClose, onSave }) {
       if (isBulk) {
         setSaveProgress(`Saving keg ${i + 1} of ${kegs.length}…`);
       }
+      const resolvedDate = isBulk
+        ? (form.date || keg.date || todayDDMMYYYY())
+        : (form.date || todayDDMMYYYY());
       const payload = isBulk
         ? {
             number: keg.number,
             contents: form.contents,
-            date: form.date || keg.date,
+            date: resolvedDate,
             note: form.note || keg.note,
             abv: form.abv || keg.abv,
           }
-        : { number: keg.number, ...form };
+        : { number: keg.number, ...form, date: resolvedDate };
 
       try {
         const res = await fetch(APPS_SCRIPT_URL, {
@@ -217,13 +227,23 @@ function KegEditModal({ kegs, onClose, onSave }) {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Date{isBulk && <span className={styles.bulkHint}> (blank = keep existing)</span>}</label>
-            <input
-              className={styles.input}
-              type="text"
-              value={form.date}
-              onChange={(e) => update('date', e.target.value)}
-              placeholder={isBulk ? 'Leave blank to keep existing' : 'DD/MM/YYYY'}
-            />
+            <div className={styles.inputRow}>
+              <input
+                className={styles.input}
+                type="text"
+                value={form.date}
+                onChange={(e) => update('date', e.target.value)}
+                placeholder={isBulk ? 'Leave blank to keep existing' : 'DD/MM/YYYY'}
+              />
+              <button
+                type="button"
+                className={styles.todayBtn}
+                onClick={() => { playClick(); update('date', todayDDMMYYYY()); }}
+                title="Set to today"
+              >
+                Today
+              </button>
+            </div>
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Note{isBulk && <span className={styles.bulkHint}> (blank = keep existing)</span>}</label>

@@ -559,3 +559,27 @@
   color: var(--color-text-muted);
   font-size: 0.8em;
 }
+
+/* "Today" quick-fill button next to date input */
+.todayBtn {
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 8px 12px;
+  white-space: nowrap;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.todayBtn:hover {
+  color: var(--color-text-primary);
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.todayBtn:active {
+  transform: scale(0.95);
+}
