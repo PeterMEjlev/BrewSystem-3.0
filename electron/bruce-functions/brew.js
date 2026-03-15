@@ -147,17 +147,25 @@ function register(bruce, apiCall) {
         const empty = kegs.filter((k) => ['???', 'Clean', 'Dirty'].includes(k.contents.trim()));
         const beerKegs = kegs.filter((k) => !['???', 'Clean', 'Dirty', 'Starsan'].includes(k.contents.trim()));
 
+        // Format keg numbers as a spoken list ("keg 1, keg 2, and keg 3")
+        const spokenList = (typeKegs) => {
+          const nums = typeKegs.map((k) => `keg ${k.number}`);
+          if (nums.length === 1) return nums[0];
+          return nums.slice(0, -1).join(', ') + ', and ' + nums[nums.length - 1];
+        };
+
         if (detail === 'full') {
           const filled = kegs.filter((k) => k.contents.trim() !== '???');
-          const lines = [`${filled.length} of ${kegs.length} kegs filled.`];
+          const lines = [`${filled.length} of ${kegs.length} kegs are filled.`];
           for (const keg of kegs) {
-            let desc = `Keg #${keg.number} (${keg.volume}): ${keg.contents}`;
+            let desc = `Keg ${keg.number} contains ${keg.contents}`;
+            if (keg.volume) desc += `, volume ${keg.volume}`;
             if (keg.abv) desc += `, ${keg.abv} ABV`;
-            if (keg.date) desc += `, filled ${keg.date}`;
-            if (keg.note) desc += ` — ${keg.note}`;
-            lines.push(desc);
+            if (keg.date) desc += `, filled on ${keg.date}`;
+            if (keg.note) desc += `. Note: ${keg.note}`;
+            lines.push(desc + '.');
           }
-          return lines.join('. ');
+          return lines.join('\n');
         }
 
         const groups = {};
@@ -167,20 +175,19 @@ function register(bruce, apiCall) {
           groups[key].push(keg);
         }
 
-        const lines = [`${beerKegs.length} kegs with beer out of ${kegs.length} total.`];
+        const lines = [`You have ${beerKegs.length} kegs with beer out of ${kegs.length} total.`];
 
         for (const [type, typeKegs] of Object.entries(groups)) {
           const abvs = typeKegs.map((k) => k.abv).filter(Boolean);
           const abvStr = abvs.length ? ` at ${abvs[0]} ABV` : '';
-          const kegNums = typeKegs.map((k) => `#${k.number}`).join(', ');
-          lines.push(`${typeKegs.length} ${type}${abvStr} (${kegNums})`);
+          lines.push(`${typeKegs.length} kegs of ${type}${abvStr}: ${spokenList(typeKegs)}.`);
         }
 
         if (empty.length > 0) {
-          lines.push(`${empty.length} empty or unassigned kegs.`);
+          lines.push(`${empty.length} kegs are empty or unassigned.`);
         }
 
-        return lines.join('. ');
+        return lines.join('\n');
       } catch (err) {
         console.error('[Bruce] Keg status error:', err);
         return `Sorry, I couldn't fetch the keg data: ${err.message}`;
