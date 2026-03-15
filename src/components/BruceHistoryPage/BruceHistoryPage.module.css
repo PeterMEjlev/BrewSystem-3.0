@@ -1,22 +1,65 @@
 /* ── Page layout ──────────────────────────────── */
 
 .page {
-  display: flex;
-  flex-direction: column;
   height: 100%;
   overflow: hidden;
+  padding: 24px;
 }
 
-.header {
+/* ── Two-column layout ────────────────────────── */
+
+.columns {
+  display: flex;
+  gap: 24px;
+  height: 100%;
+}
+
+.columns > .card:first-child {
+  flex: 2;
+}
+
+.columns > .card:last-child {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .columns {
+    flex-direction: column;
+  }
+  .columns > .card:first-child,
+  .columns > .card:last-child {
+    flex: none;
+  }
+  .columns > .card:first-child {
+    height: 60%;
+  }
+  .columns > .card:last-child {
+    height: 40%;
+  }
+}
+
+/* ── Card ─────────────────────────────────────── */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.cardHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 32px 16px;
+  padding: 20px 24px 12px;
   flex-shrink: 0;
 }
 
-.title {
-  font-size: var(--font-size-2xl);
+.cardTitle {
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   margin: 0;
@@ -28,8 +71,8 @@
   border-radius: var(--radius-md);
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: var(--font-size-sm);
-  padding: 8px 16px;
+  font-size: var(--font-size-xs);
+  padding: 6px 12px;
   transition: var(--transition-fast);
 }
 
@@ -39,15 +82,15 @@
   background: rgba(239, 68, 68, 0.08);
 }
 
-/* ── Timeline ─────────────────────────────────── */
+/* ── Timeline (history card) ──────────────────── */
 
 .timeline {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 32px 24px;
+  padding: 4px 24px 20px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 /* ── Date divider ─────────────────────────────── */
@@ -57,7 +100,7 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-muted);
-  padding: 12px 0 4px;
+  padding: 10px 0 2px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -66,7 +109,7 @@
 
 .message {
   max-width: 720px;
-  padding: 10px 0;
+  padding: 8px 0;
 }
 
 /* ── Sender row ───────────────────────────────── */
@@ -171,6 +214,66 @@
   color: var(--color-accent-orange);
 }
 
+/* ── Reminder list (right card) ───────────────── */
+
+.reminderList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Reminder item ────────────────────────────── */
+
+.reminderItem {
+  padding: 12px 14px;
+  background: rgba(99, 164, 255, 0.06);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-accent-blue);
+}
+
+.reminderItem.reminderFired {
+  opacity: 0.55;
+  border-left-color: var(--color-text-muted);
+  background: rgba(100, 116, 139, 0.06);
+}
+
+.reminderHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.reminderBadge {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badgeActive {
+  color: var(--color-accent-blue);
+}
+
+.badgeFired {
+  color: var(--color-text-muted);
+}
+
+.reminderMessage {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+.reminderMeta {
+  margin-top: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
 /* ── Empty state ──────────────────────────────── */
 
 .empty {
@@ -179,21 +282,21 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  padding: 80px 24px;
+  padding: 48px 16px;
   text-align: center;
 }
 
 .emptyIcon {
   color: var(--color-text-muted);
   opacity: 0.4;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .emptyText {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
-  margin: 0 0 8px;
+  margin: 0 0 6px;
 }
 
 .emptyHint {

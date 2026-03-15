@@ -2,7 +2,7 @@
 
 // ── Register tool/utility functions on Bruce ────────────────────────────────
 
-function register(bruce, apiCall) {
+function register(bruce, apiCall, emitMessage) {
   // ── Reminders ──────────────────────────────────────────────────────────
 
   const reminders = new Map();
@@ -26,12 +26,17 @@ function register(bruce, apiCall) {
       if (totalMs <= 0) return 'Please specify a time in the future for the reminder.';
 
       const id = ++reminderId;
+      const createdAt = Date.now();
+      const firesAt = createdAt + totalMs;
       const timer = setTimeout(() => {
         reminders.delete(id);
         console.log(`[Bruce] Reminder fired: ${message}`);
+        if (emitMessage) emitMessage({ type: 'reminder_fired', id, message, timestamp: Date.now() });
         bruce.speak(`[SYSTEM] A scheduled reminder has fired. You MUST say the following reminder out loud to the user, word for word. Do not say anything else, no greetings, no follow-ups. Just deliver the reminder: "${message}"`);
       }, totalMs);
-      reminders.set(id, { message, timer });
+      reminders.set(id, { message, timer, createdAt, firesAt });
+
+      if (emitMessage) emitMessage({ type: 'reminder_set', id, message, createdAt, firesAt, timestamp: createdAt });
 
       const parts = [];
       if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);

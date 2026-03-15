@@ -59,12 +59,6 @@ async function main() {
       fs.readFileSync(path.join(__dirname, 'bruce-system-prompt.txt'), 'utf-8').trim(),
   });
 
-  // ── Register all function categories ──────────────────────────────────
-
-  hardwareFunctions.register(bruce, apiCall);
-  brewFunctions.register(bruce, apiCall);
-  toolFunctions.register(bruce, apiCall);
-
   // ── State broadcasting ──────────────────────────────────────────────────
 
   const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
@@ -77,6 +71,12 @@ async function main() {
   function emitMessage(msg) {
     process.stdout.write(`${BRUCE_MSG_PREFIX}${JSON.stringify(msg)}\n`);
   }
+
+  // ── Register all function categories ──────────────────────────────────
+
+  hardwareFunctions.register(bruce, apiCall);
+  brewFunctions.register(bruce, apiCall);
+  toolFunctions.register(bruce, apiCall, emitMessage);
 
   // ── Logging ─────────────────────────────────────────────────────────────
   //
