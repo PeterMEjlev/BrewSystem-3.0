@@ -41,21 +41,6 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
       </button>
 
       <button
-        className={`${styles.navBtn} ${activePanel === 'recipe' ? styles.active : ''}`}
-        onClick={() => handleNav('recipe')}
-      >
-        <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-          />
-        </svg>
-        <span className={styles.label}>Recipe</span>
-      </button>
-
-      <button
         className={`${styles.navBtn} ${activePanel === 'tools' ? styles.active : ''}`}
         onClick={() => handleNav('tools')}
       >
@@ -68,6 +53,36 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
           />
         </svg>
         <span className={styles.label}>Tools</span>
+      </button>
+
+      <button
+        className={`${styles.navBtn} ${activePanel === 'kegs' ? styles.active : ''}`}
+        onClick={() => handleNav('kegs')}
+      >
+        <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <ellipse cx="12" cy="4" rx="6" ry="2" strokeWidth={2} />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M6 4v16c0 1.1 2.686 2 6 2s6-.9 6-2V4"
+          />
+          <ellipse cx="12" cy="20" rx="6" ry="2" strokeWidth={2} fill="none" />
+          <path strokeLinecap="round" strokeWidth={1.5} d="M6 10c2 1 8 1 12 0" />
+        </svg>
+        <span className={styles.label}>Keg Info</span>
+      </button>
+
+      <button
+        className={`${styles.navBtn} ${activePanel === 'recipe' ? styles.active : ''}`}
+        onClick={() => handleNav('recipe')}
+      >
+        <svg className={styles.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+          />
+        </svg>
+        <span className={styles.label}>Recipe</span>
       </button>
 
       <button
