@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { playClick } from '../../utils/sounds';
 import styles from '../ToolsPage/ToolsPage.module.css';
 
@@ -94,7 +94,6 @@ function sortKegs(kegs, sortKey, sortAsc) {
       case 'date': {
         const da = parseDate(a.date);
         const db = parseDate(b.date);
-        // Push empty dates to the end regardless of direction
         if (!da && !db) return 0;
         if (!da) return 1;
         if (!db) return -1;
@@ -116,19 +115,25 @@ function sortKegs(kegs, sortKey, sortAsc) {
   });
 }
 
-function KegEditModal({ keg, onClose, onSave }) {
+const LONG_PRESS_MS = 500;
+
+function KegEditModal({ kegs, onClose, onSave }) {
+  const isBulk = kegs.length > 1;
+  const first = kegs[0];
+
   const [form, setForm] = useState({
-    contents: keg.contents,
-    date: keg.date,
-    note: keg.note,
-    abv: keg.abv,
+    contents: isBulk ? first.contents : first.contents,
+    date: isBulk ? '' : first.date,
+    note: isBulk ? '' : first.note,
+    abv: isBulk ? '' : first.abv,
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [saveProgress, setSaveProgress] = useState('');
 
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!APPS_SCRIPT_URL) {
       setSaveError('Apps Script URL not configured. See google-apps-script/keg-updater.gs for setup instructions.');
       return;
@@ -136,17 +141,43 @@ function KegEditModal({ keg, onClose, onSave }) {
     setSaving(true);
     setSaveError('');
 
-    fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({ number: keg.number, ...form }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
+    const updates = [];
+    for (let i = 0; i < kegs.length; i++) {
+      const keg = kegs[i];
+      if (isBulk) {
+        setSaveProgress(`Saving keg ${i + 1} of ${kegs.length}…`);
+      }
+      const payload = isBulk
+        ? {
+            number: keg.number,
+            contents: form.contents,
+            date: form.date || keg.date,
+            note: form.note || keg.note,
+            abv: form.abv || keg.abv,
+          }
+        : { number: keg.number, ...form };
+
+      try {
+        const res = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
         if (data.error) throw new Error(data.error);
-        onSave({ ...keg, ...form });
-      })
-      .catch((err) => setSaveError(err.message))
-      .finally(() => setSaving(false));
+        updates.push({ ...keg, ...payload });
+      } catch (err) {
+        setSaveError(`Failed on keg #${keg.number}: ${err.message}`);
+        setSaving(false);
+        setSaveProgress('');
+        // Still apply successful updates so far
+        if (updates.length > 0) onSave(updates);
+        return;
+      }
+    }
+
+    setSaving(false);
+    setSaveProgress('');
+    onSave(updates);
   };
 
   const color = getContentColor(form.contents);
@@ -156,10 +187,20 @@ function KegEditModal({ keg, onClose, onSave }) {
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <h3 className={styles.modalTitle}>
-            Edit Keg <span style={color ? { color } : undefined}>#{keg.number}</span>
+            {isBulk ? (
+              <>Edit {kegs.length} Kegs</>
+            ) : (
+              <>Edit Keg <span style={color ? { color } : undefined}>#{first.number}</span></>
+            )}
           </h3>
           <button className={styles.modalClose} onClick={onClose}>×</button>
         </div>
+
+        {isBulk && (
+          <p className={styles.bulkKegList}>
+            Kegs: {kegs.map((k) => `#${k.number}`).join(', ')}
+          </p>
+        )}
 
         <div className={styles.fields}>
           <div className={styles.field}>
@@ -175,43 +216,44 @@ function KegEditModal({ keg, onClose, onSave }) {
             </select>
           </div>
           <div className={styles.field}>
-            <label className={styles.label}>Date</label>
+            <label className={styles.label}>Date{isBulk && <span className={styles.bulkHint}> (blank = keep existing)</span>}</label>
             <input
               className={styles.input}
               type="text"
               value={form.date}
               onChange={(e) => update('date', e.target.value)}
-              placeholder="DD/MM/YYYY"
+              placeholder={isBulk ? 'Leave blank to keep existing' : 'DD/MM/YYYY'}
             />
           </div>
           <div className={styles.field}>
-            <label className={styles.label}>Note</label>
+            <label className={styles.label}>Note{isBulk && <span className={styles.bulkHint}> (blank = keep existing)</span>}</label>
             <input
               className={styles.input}
               type="text"
               value={form.note}
               onChange={(e) => update('note', e.target.value)}
-              placeholder="e.g. Dry-hopped"
+              placeholder={isBulk ? 'Leave blank to keep existing' : 'e.g. Dry-hopped'}
             />
           </div>
           <div className={styles.field}>
-            <label className={styles.label}>ABV</label>
+            <label className={styles.label}>ABV{isBulk && <span className={styles.bulkHint}> (blank = keep existing)</span>}</label>
             <input
               className={styles.input}
               type="text"
               value={form.abv}
               onChange={(e) => update('abv', e.target.value)}
-              placeholder="e.g. 5.2%"
+              placeholder={isBulk ? 'Leave blank to keep existing' : 'e.g. 5.2%'}
             />
           </div>
         </div>
 
         {saveError && <p className={styles.error}>{saveError}</p>}
+        {saveProgress && <p className={styles.calcSubtitle}>{saveProgress}</p>}
 
         <div className={styles.modalActions}>
           <button className={styles.modalCancelBtn} onClick={() => { playClick(); onClose(); }}>Cancel</button>
           <button className={styles.calcButton} onClick={() => { playClick(); handleSave(); }} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving…' : isBulk ? `Save ${kegs.length} Kegs` : 'Save'}
           </button>
         </div>
       </div>
@@ -225,7 +267,19 @@ function KegStatusPage() {
   const [error, setError] = useState('');
   const [sortKey, setSortKey] = useState('number');
   const [sortAsc, setSortAsc] = useState(true);
+
+  // Single edit
   const [editingKeg, setEditingKeg] = useState(null);
+
+  // Multi-select
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [editingBulk, setEditingBulk] = useState(false);
+
+  // Long-press tracking
+  const pressTimer = useRef(null);
+  const pressedKeg = useRef(null);
+  const didLongPress = useRef(false);
 
   useEffect(() => {
     fetch(SHEETS_CSV_URL)
@@ -235,7 +289,6 @@ function KegStatusPage() {
       })
       .then((text) => {
         const rows = parseCSV(text);
-        // Row 0 is blank, row 1 is header — data starts at row 2
         const dataRows = rows.slice(2);
         const parsed = dataRows
           .map((cols) => ({
@@ -255,12 +308,16 @@ function KegStatusPage() {
 
   const isUnknown = (contents) => contents.trim() === '???';
 
-  const handleKegSave = (updatedKeg) => {
-    setKegs((prev) =>
-      prev.map((k) => (k.number === updatedKeg.number ? updatedKeg : k)),
-    );
+  const handleSaveResult = useCallback((updatedKegs) => {
+    setKegs((prev) => {
+      const map = new Map(updatedKegs.map((k) => [k.number, k]));
+      return prev.map((k) => map.get(k.number) || k);
+    });
     setEditingKeg(null);
-  };
+    setEditingBulk(false);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
 
   const handleSort = (key) => {
     if (key === sortKey) {
@@ -270,6 +327,68 @@ function KegStatusPage() {
       setSortAsc(true);
     }
   };
+
+  // --- Long-press + tap handling ---
+
+  const startPress = useCallback((kegNumber) => {
+    pressedKeg.current = kegNumber;
+    didLongPress.current = false;
+    pressTimer.current = setTimeout(() => {
+      didLongPress.current = true;
+      playClick();
+      // Enter select mode and select this keg
+      setSelectMode(true);
+      setSelectedIds((prev) => new Set(prev).add(kegNumber));
+    }, LONG_PRESS_MS);
+  }, []);
+
+  const cancelPress = useCallback(() => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }, []);
+
+  const endPress = useCallback((keg) => {
+    cancelPress();
+    // If long-press already fired, don't also do a tap action
+    if (didLongPress.current) {
+      didLongPress.current = false;
+      return;
+    }
+
+    playClick();
+
+    if (selectMode) {
+      // Toggle selection
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(keg.number)) {
+          next.delete(keg.number);
+        } else {
+          next.add(keg.number);
+        }
+        // Exit select mode if nothing selected
+        if (next.size === 0) {
+          setSelectMode(false);
+        }
+        return next;
+      });
+    } else {
+      // Normal single-keg edit
+      setEditingKeg(keg);
+    }
+  }, [selectMode, cancelPress]);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const openBulkEdit = useCallback(() => {
+    playClick();
+    setEditingBulk(true);
+  }, []);
 
   if (loading) {
     return (
@@ -290,14 +409,26 @@ function KegStatusPage() {
   }
 
   const sorted = sortKegs(kegs, sortKey, sortAsc);
+  const selectedKegs = kegs.filter((k) => selectedIds.has(k.number));
 
   return (
     <div className={styles.calculator}>
-      <h2 className={styles.calcTitle}>Keg Status</h2>
-      <p className={styles.calcSubtitle}>
-        Current inventory — {kegs.filter((k) => !isUnknown(k.contents)).length} of{' '}
-        {kegs.length} kegs filled
-      </p>
+      <div className={styles.kegTitleRow}>
+        <div>
+          <h2 className={styles.calcTitle}>Keg Status</h2>
+          <p className={styles.calcSubtitle}>
+            {selectMode
+              ? `${selectedIds.size} keg${selectedIds.size !== 1 ? 's' : ''} selected — tap to toggle`
+              : <>Current inventory — {kegs.filter((k) => !isUnknown(k.contents)).length} of {kegs.length} kegs filled</>
+            }
+          </p>
+        </div>
+        {selectMode && (
+          <button className={styles.exitSelectBtn} onClick={() => { playClick(); exitSelectMode(); }}>
+            Cancel
+          </button>
+        )}
+      </div>
 
       <div className={styles.sortBar}>
         {SORT_OPTIONS.map(({ key, label }) => (
@@ -320,6 +451,7 @@ function KegStatusPage() {
           const unknown = isUnknown(keg.contents);
           const rgb = color ? hexToRgb(color) : null;
           const isStout = keg.contents.trim().toLowerCase() === 'stout';
+          const selected = selectedIds.has(keg.number);
           const cardStyle = rgb
             ? {
                 borderLeft: `3px solid ${color}`,
@@ -332,13 +464,38 @@ function KegStatusPage() {
           return (
             <div
               key={keg.number}
-              className={`${styles.kegCard} ${unknown ? styles.kegUnknown : ''}`}
+              className={`${styles.kegCard} ${unknown ? styles.kegUnknown : ''} ${selected ? styles.kegSelected : ''}`}
               style={cardStyle}
-              onClick={() => { playClick(); setEditingKeg(keg); }}
+              onPointerDown={(e) => {
+                // Only handle primary button (left click / touch)
+                if (e.button !== 0) return;
+                e.preventDefault();
+                startPress(keg.number);
+              }}
+              onPointerUp={() => endPress(keg)}
+              onPointerLeave={cancelPress}
+              onContextMenu={(e) => e.preventDefault()}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && setEditingKeg(keg)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (selectMode) {
+                    endPress(keg);
+                  } else {
+                    setEditingKeg(keg);
+                  }
+                }
+              }}
             >
+              {selectMode && (
+                <div className={styles.kegCheckbox}>
+                  {selected && (
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+              )}
               <div className={styles.kegHeader}>
                 <span className={styles.kegNumber}>#{keg.number}</span>
                 <span className={styles.kegVolume}>{keg.volume}</span>
@@ -354,11 +511,33 @@ function KegStatusPage() {
         })}
       </div>
 
+      {/* Floating bulk action bar */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className={styles.bulkBar}>
+          <span className={styles.bulkBarLabel}>
+            {selectedIds.size} keg{selectedIds.size !== 1 ? 's' : ''} selected
+          </span>
+          <button className={styles.calcButton} onClick={openBulkEdit}>
+            Assign Content to {selectedIds.size} Keg{selectedIds.size !== 1 ? 's' : ''}
+          </button>
+        </div>
+      )}
+
+      {/* Single-keg edit modal */}
       {editingKeg && (
         <KegEditModal
-          keg={editingKeg}
+          kegs={[editingKeg]}
           onClose={() => setEditingKeg(null)}
-          onSave={handleKegSave}
+          onSave={handleSaveResult}
+        />
+      )}
+
+      {/* Bulk edit modal */}
+      {editingBulk && selectedKegs.length > 0 && (
+        <KegEditModal
+          kegs={selectedKegs}
+          onClose={() => setEditingBulk(false)}
+          onSave={handleSaveResult}
         />
       )}
     </div>

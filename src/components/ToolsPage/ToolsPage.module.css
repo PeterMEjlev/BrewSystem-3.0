@@ -446,3 +446,116 @@
   padding-right: 32px;
   cursor: pointer;
 }
+
+/* ── Multi-select: title row with cancel button ── */
+.kegTitleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.kegTitleRow .calcTitle {
+  margin-bottom: 4px;
+}
+
+.kegTitleRow .calcSubtitle {
+  margin-bottom: 0;
+}
+
+.exitSelectBtn {
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 8px 16px;
+  white-space: nowrap;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.exitSelectBtn:hover {
+  color: var(--color-text-primary);
+  background: rgba(100, 116, 139, 0.15);
+}
+
+/* ── Multi-select: selected keg card ── */
+.kegSelected {
+  outline: 2px solid var(--color-accent-blue, #3b82f6);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+.kegSelected:hover {
+  outline-color: var(--color-accent-blue, #3b82f6);
+}
+
+/* ── Multi-select: checkbox indicator ── */
+.kegCheckbox {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-tertiary, #1e293b);
+  transition: var(--transition-fast);
+  color: white;
+}
+
+.kegSelected .kegCheckbox {
+  background: var(--color-accent-blue, #3b82f6);
+  border-color: var(--color-accent-blue, #3b82f6);
+}
+
+/* Card needs relative positioning for the checkbox */
+.kegCard {
+  position: relative;
+}
+
+/* ── Multi-select: floating bulk action bar ── */
+.bulkBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px -24px -24px -24px;
+  padding: 16px 24px;
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.bulkBarLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── Bulk edit modal: keg list summary ── */
+.bulkKegList {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: -12px 0 16px 0;
+  line-height: 1.5;
+}
+
+.bulkHint {
+  font-weight: normal;
+  color: var(--color-text-muted);
+  font-size: 0.8em;
+}
