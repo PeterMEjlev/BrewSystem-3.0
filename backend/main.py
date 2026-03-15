@@ -564,6 +564,7 @@ async def get_recipe(recipe_id: int) -> Dict[str, Any]:
             "fermentables": _extract_fermentables(recipe),
             "hops": _extract_hops(recipe),
             "yeast": _extract_yeast(recipe),
+            "waterProfile": _extract_water_profile(recipe),
         }
 
 
@@ -651,6 +652,35 @@ def _extract_hops(recipe: Dict) -> list:
         }
         for h in hops
     ]
+
+
+def _extract_water_profile(recipe: Dict) -> Optional[Dict[str, Any]]:
+    """Extract target water profile from the recipe."""
+    minerals = {
+        "calcium": recipe.get("ca2"),
+        "magnesium": recipe.get("mg2"),
+        "sodium": recipe.get("na"),
+        "chloride": recipe.get("cl"),
+        "sulfate": recipe.get("so4"),
+        "bicarbonate": recipe.get("hco3"),
+    }
+    name = recipe.get("waterprofile") or None
+    ph = recipe.get("ph") or None
+    notes = recipe.get("waternotes") or None
+
+    # Filter out None/empty mineral values
+    filled = {k: v for k, v in minerals.items() if v is not None and v != ""}
+
+    # Only return a profile if there's at least a name or some mineral data
+    if not name and not filled and not ph:
+        return None
+
+    return {
+        "name": name,
+        "ph": ph,
+        "notes": notes,
+        **minerals,
+    }
 
 
 def _extract_yeast(recipe: Dict) -> list:

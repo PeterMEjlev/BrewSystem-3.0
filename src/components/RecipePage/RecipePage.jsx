@@ -19,8 +19,8 @@ function RecipePage() {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       const saved = sessionStorage.getItem('recipeSectionsCollapsed');
-      return saved ? JSON.parse(saved) : { fermentables: false, hops: false, yeast: false };
-    } catch { return { fermentables: false, hops: false, yeast: false }; }
+      return saved ? JSON.parse(saved) : { fermentables: false, hops: false, yeast: false, water: false };
+    } catch { return { fermentables: false, hops: false, yeast: false, water: false }; }
   });
 
   const toggleSection = (key) => setCollapsed(prev => {
@@ -359,6 +359,68 @@ function RecipePage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {recipe.waterProfile && (
+          <div className={styles.section}>
+            <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('water'); }}>
+              <span>💧 Water Profile {recipe.waterProfile.name && <span className={styles.sectionSubtitle}>{recipe.waterProfile.name}</span>}</span>
+              <svg className={`${styles.collapseChevron} ${collapsed.water ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {!collapsed.water && (() => {
+              const wp = recipe.waterProfile;
+              const batchL = parseFloat(recipe.batchSize);
+              const hasBatch = !isNaN(batchL) && batchL > 0;
+              const calcGrams = (mgPerL) => (mgPerL * batchL) / 1000;
+              const minerals = [
+                { label: 'Calcium',      key: 'calcium' },
+                { label: 'Magnesium',    key: 'magnesium' },
+                { label: 'Sodium',       key: 'sodium' },
+                { label: 'Chloride',     key: 'chloride' },
+                { label: 'Sulfate',      key: 'sulfate' },
+                { label: 'Bicarbonate',  key: 'bicarbonate' },
+              ];
+              const hasMinerals = minerals.some(m => wp[m.key] != null && wp[m.key] !== '');
+              return (
+                <div className={styles.waterContent}>
+                  {hasMinerals && (
+                    <div className={styles.mineralGrid}>
+                      {minerals.map(({ label, key }) => {
+                        const raw = wp[key];
+                        if (raw == null || raw === '') return null;
+                        const mgPerL = parseFloat(raw);
+                        const isNum = !isNaN(mgPerL);
+                        return (
+                          <div key={key} className={styles.mineralCard}>
+                            <span className={styles.mineralLabel}>{label}</span>
+                            <span className={styles.mineralValue}>{raw}</span>
+                            <span className={styles.mineralUnit}>ppm / mg/L</span>
+                            {isNum && hasBatch && (
+                              <span className={styles.mineralGrams}>{calcGrams(mgPerL).toFixed(2)} g</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {wp.ph && (
+                    <div className={styles.waterMeta}>
+                      <span className={styles.waterMetaLabel}>pH</span>
+                      <span className={styles.waterMetaValue}>{wp.ph}</span>
+                    </div>
+                  )}
+                  {wp.notes && (
+                    <div className={styles.waterMeta}>
+                      <span className={styles.waterMetaLabel}>Notes</span>
+                      <span className={styles.waterMetaValue}>{wp.notes}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
