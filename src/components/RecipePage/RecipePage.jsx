@@ -19,8 +19,8 @@ function RecipePage() {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       const saved = sessionStorage.getItem('recipeSectionsCollapsed');
-      return saved ? JSON.parse(saved) : { fermentables: false, hops: false, yeast: false, water: false };
-    } catch { return { fermentables: false, hops: false, yeast: false, water: false }; }
+      return saved ? JSON.parse(saved) : { fermentables: true, hops: true, yeast: true, water: true };
+    } catch { return { fermentables: true, hops: true, yeast: true, water: true }; }
   });
 
   const toggleSection = (key) => setCollapsed(prev => {
@@ -197,7 +197,11 @@ function RecipePage() {
     };
     const totalFermentablesKg = recipe.fermentables.reduce((s, f) => s + toKg(f.amount, f.unit), 0);
     const totalHopsG = recipe.hops.reduce((s, h) => s + toG(h.amount, h.unit), 0);
-    const hopsGperL = recipe.batchSize ? totalHopsG / recipe.batchSize : null;
+    const isBitteringHop = (h) => parseFloat(h.time) === 60;
+    const nonBitteringHopsG = recipe.hops
+      .filter((h) => !isBitteringHop(h))
+      .reduce((s, h) => s + toG(h.amount, h.unit), 0);
+    const hopsGperL = recipe.batchSize ? nonBitteringHopsG / recipe.batchSize : null;
 
     return (
       <div
@@ -224,6 +228,18 @@ function RecipePage() {
         </div>
 
         <div className={styles.statsGrid}>
+          {recipe.preBoilGravity && (
+            <div className={styles.statCard}>
+              <span className={styles.statLabel}>Pre-Boil</span>
+              <span className={styles.statValue}>{fmt(recipe.preBoilGravity, 3)}</span>
+            </div>
+          )}
+          {recipe.postBoilGravity && (
+            <div className={styles.statCard}>
+              <span className={styles.statLabel}>Post-Boil</span>
+              <span className={styles.statValue}>{fmt(recipe.postBoilGravity, 3)}</span>
+            </div>
+          )}
           <div className={styles.statCard}>
             <span className={styles.statLabel}>OG</span>
             <span className={styles.statValue}>{fmt(recipe.og, 3)}</span>
@@ -376,8 +392,8 @@ function RecipePage() {
               const hasBatch = !isNaN(batchL) && batchL > 0;
               const calcGrams = (mgPerL) => (mgPerL * batchL) / 1000;
               const minerals = [
-                { label: 'Calcium',      key: 'calcium' },
-                { label: 'Magnesium',    key: 'magnesium' },
+                { label: 'Calcium',      key: 'calcium',    source: 'Gypsum' },
+                { label: 'Magnesium',    key: 'magnesium',  source: 'Epsom salt' },
                 { label: 'Sodium',       key: 'sodium' },
                 { label: 'Chloride',     key: 'chloride' },
                 { label: 'Sulfate',      key: 'sulfate' },
@@ -388,7 +404,7 @@ function RecipePage() {
                 <div className={styles.waterContent}>
                   {hasMinerals && (
                     <div className={styles.mineralGrid}>
-                      {minerals.map(({ label, key }) => {
+                      {minerals.map(({ label, key, source }) => {
                         const raw = wp[key];
                         if (raw == null || raw === '') return null;
                         const mgPerL = parseFloat(raw);
@@ -396,6 +412,7 @@ function RecipePage() {
                         return (
                           <div key={key} className={styles.mineralCard}>
                             <span className={styles.mineralLabel}>{label}</span>
+                            {source && <span className={styles.mineralSource}>{source}</span>}
                             <span className={styles.mineralValue}>{raw}</span>
                             <span className={styles.mineralUnit}>ppm / mg/L</span>
                             {isNum && hasBatch && (

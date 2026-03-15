@@ -417,6 +417,13 @@
   font-size: var(--recipe-font-xs);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-secondary);
+  margin-bottom: 0;
+}
+
+.mineralSource {
+  font-size: calc(10px * var(--recipe-scale));
+  color: var(--color-text-muted);
+  font-style: italic;
   margin-bottom: 2px;
 }
 

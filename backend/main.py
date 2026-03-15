@@ -554,6 +554,8 @@ async def get_recipe(recipe_id: int) -> Dict[str, Any]:
             "name": recipe.get("title", ""),
             "style": recipe.get("stylename", ""),
             "og": recipe.get("og", ""),
+            "preBoilGravity": recipe.get("boilgravity") or None,
+            "postBoilGravity": recipe.get("post_boilgravity") or None,
             "fg": recipe.get("fg", ""),
             "abv": recipe.get("abv", ""),
             "ibu": recipe.get("ibutinseth", ""),
