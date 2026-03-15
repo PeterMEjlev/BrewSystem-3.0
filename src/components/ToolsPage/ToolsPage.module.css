@@ -583,3 +583,195 @@
 .todayBtn:active {
   transform: scale(0.95);
 }
+
+/* ── Recipe linking in keg edit modal ── */
+.recipeLinkSection {
+  margin-bottom: 16px;
+}
+
+.linkRecipeBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 10px 14px;
+  transition: var(--transition-fast);
+}
+
+.linkRecipeBtn:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-blue, #3b82f6);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.linkRecipeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.linkRecipeBtn svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* Recipe picker */
+.recipePicker {
+  background: var(--color-bg-tertiary, #1e293b);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.recipePickerHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.recipeSearchInput {
+  flex: 1;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  padding: 8px 12px;
+  outline: none;
+}
+
+.recipeSearchInput:focus {
+  border-color: var(--color-accent-blue);
+}
+
+.recipePickerClose {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  border-radius: var(--radius-sm, 6px);
+  transition: var(--transition-fast);
+}
+
+.recipePickerClose:hover {
+  color: var(--color-text-primary);
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.recipePickerList {
+  max-height: 200px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.recipePickerItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.1);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  padding: 10px 12px;
+  text-align: left;
+  transition: var(--transition-fast);
+}
+
+.recipePickerItem:last-child {
+  border-bottom: none;
+}
+
+.recipePickerItem:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.recipePickerName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.recipePickerMeta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.recipePickerEmpty {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 16px;
+  margin: 0;
+}
+
+/* Linked recipe badge */
+.linkedRecipeBadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+}
+
+.linkedRecipeInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.linkedRecipeLabel {
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-blue, #3b82f6);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.linkedRecipeName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.linkedRecipeMeta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.clearRecipeBtn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  border-radius: var(--radius-sm, 6px);
+  flex-shrink: 0;
+  transition: var(--transition-fast);
+}
+
+.clearRecipeBtn:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}

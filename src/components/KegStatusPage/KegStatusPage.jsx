@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { playClick } from '../../utils/sounds';
+import { playClick, playNavigate } from '../../utils/sounds';
 import styles from '../ToolsPage/ToolsPage.module.css';
 
 const SHEETS_CSV_URL =
@@ -115,6 +115,25 @@ function sortKegs(kegs, sortKey, sortAsc) {
   });
 }
 
+// Try to match a recipe name/style to a predefined content option.
+// e.g. "My Tropical Sour" → "Sour", "Galaxy NEIPA" → "NEIPA"
+function matchContentOption(recipeName, recipeStyle) {
+  const sources = [recipeName, recipeStyle].filter(Boolean);
+  for (const text of sources) {
+    const t = text.toLowerCase();
+    // Order matters: check more specific terms before generic ones
+    if (t.includes('neipa') || t.includes('hazy'))        return 'NEIPA';
+    if (t.includes('sipa') || t.includes('session ipa'))   return 'SIPA';
+    if (t.includes('brown ale'))                           return 'Brown Ale';
+    if (t.includes('ipa'))                                 return 'IPA';
+    if (t.includes('wiessbeer') || t.includes('weiss') || t.includes('hefeweizen') || t.includes('wheat')) return 'Wiessbeer';
+    if (t.includes('sour') || t.includes('gose') || t.includes('berliner')) return 'Sour';
+    if (t.includes('pilsner') || t.includes('pils') || t.includes('lager')) return 'Pilsner';
+    if (t.includes('stout') || t.includes('porter'))       return 'Stout';
+  }
+  return null;
+}
+
 const LONG_PRESS_MS = 500;
 
 function todayDDMMYYYY() {
@@ -138,7 +157,58 @@ function KegEditModal({ kegs, onClose, onSave }) {
   const [saveError, setSaveError] = useState('');
   const [saveProgress, setSaveProgress] = useState('');
 
+  // Recipe linking state
+  const [recipes, setRecipes] = useState([]);
+  const [recipesLoading, setRecipesLoading] = useState(true);
+  const [showRecipePicker, setShowRecipePicker] = useState(false);
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [linkedRecipe, setLinkedRecipe] = useState(null);
+
+  // Fetch recipes on mount
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/recipes')
+      .then((res) => res.ok ? res.json() : Promise.reject(new Error('Failed')))
+      .then((data) => { if (!cancelled) setRecipes(data.recipes || []); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setRecipesLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleLinkRecipe = (recipe) => {
+    playNavigate();
+    setLinkedRecipe(recipe);
+    setShowRecipePicker(false);
+    setRecipeSearch('');
+    const abvStr = recipe.abv ? `${parseFloat(recipe.abv).toFixed(1)}%` : '';
+    const contentMatch = matchContentOption(recipe.name, recipe.style);
+    setForm((prev) => ({
+      ...prev,
+      contents: contentMatch || recipe.name,
+      abv: abvStr || prev.abv,
+    }));
+  };
+
+  const handleClearRecipe = () => {
+    playClick();
+    setLinkedRecipe(null);
+    setForm((prev) => ({
+      ...prev,
+      contents: CONTENT_OPTIONS.includes(prev.contents) ? prev.contents : first.contents,
+    }));
+  };
+
+  // Dynamic content options — add recipe name if not in standard list
+  const dynamicContent = linkedRecipe && !CONTENT_OPTIONS.includes(form.contents) ? form.contents : null;
+
+  // Filter recipes by search query
+  const filteredRecipes = recipes.filter((r) => {
+    if (!recipeSearch) return true;
+    const q = recipeSearch.toLowerCase();
+    return r.name.toLowerCase().includes(q) || (r.style || '').toLowerCase().includes(q);
+  });
 
   const handleSave = async () => {
     if (!APPS_SCRIPT_URL) {
@@ -155,8 +225,8 @@ function KegEditModal({ kegs, onClose, onSave }) {
         setSaveProgress(`Saving keg ${i + 1} of ${kegs.length}…`);
       }
       const resolvedDate = isBulk
-        ? (form.date || keg.date || todayDDMMYYYY())
-        : (form.date || todayDDMMYYYY());
+        ? (form.date || keg.date)
+        : form.date;
       const payload = isBulk
         ? {
             number: keg.number,
@@ -212,6 +282,74 @@ function KegEditModal({ kegs, onClose, onSave }) {
           </p>
         )}
 
+        {/* Recipe linking section */}
+        <div className={styles.recipeLinkSection}>
+          {!linkedRecipe ? (
+            !showRecipePicker ? (
+              <button
+                className={styles.linkRecipeBtn}
+                onClick={() => { playClick(); setShowRecipePicker(true); }}
+                disabled={recipesLoading || recipes.length === 0}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+                </svg>
+                {recipesLoading ? 'Loading recipes…' :
+                  recipes.length === 0 ? 'No recipes available' :
+                  'Link Recipe'}
+              </button>
+            ) : (
+              <div className={styles.recipePicker}>
+                <div className={styles.recipePickerHeader}>
+                  <input
+                    className={styles.recipeSearchInput}
+                    type="text"
+                    placeholder="Search recipes…"
+                    value={recipeSearch}
+                    onChange={(e) => setRecipeSearch(e.target.value)}
+                    autoFocus
+                  />
+                  <button
+                    className={styles.recipePickerClose}
+                    onClick={() => { playClick(); setShowRecipePicker(false); setRecipeSearch(''); }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className={styles.recipePickerList}>
+                  {filteredRecipes.map((r) => (
+                    <button
+                      key={r.id}
+                      className={styles.recipePickerItem}
+                      onClick={() => handleLinkRecipe(r)}
+                    >
+                      <span className={styles.recipePickerName}>{r.name}</span>
+                      <span className={styles.recipePickerMeta}>
+                        {r.style || 'No style'}{r.abv ? ` · ${parseFloat(r.abv).toFixed(1)}%` : ''}
+                      </span>
+                    </button>
+                  ))}
+                  {filteredRecipes.length === 0 && (
+                    <p className={styles.recipePickerEmpty}>No matching recipes</p>
+                  )}
+                </div>
+              </div>
+            )
+          ) : (
+            <div className={styles.linkedRecipeBadge}>
+              <div className={styles.linkedRecipeInfo}>
+                <span className={styles.linkedRecipeLabel}>Linked recipe</span>
+                <span className={styles.linkedRecipeName}>{linkedRecipe.name}</span>
+                <span className={styles.linkedRecipeMeta}>
+                  {linkedRecipe.style || 'No style'}{linkedRecipe.abv ? ` · ${parseFloat(linkedRecipe.abv).toFixed(1)}%` : ''}
+                </span>
+              </div>
+              <button className={styles.clearRecipeBtn} onClick={handleClearRecipe} title="Unlink recipe">×</button>
+            </div>
+          )}
+        </div>
+
         <div className={styles.fields}>
           <div className={styles.field}>
             <label className={styles.label}>Contents</label>
@@ -220,6 +358,9 @@ function KegEditModal({ kegs, onClose, onSave }) {
               value={form.contents}
               onChange={(e) => update('contents', e.target.value)}
             >
+              {dynamicContent && (
+                <option value={dynamicContent}>{dynamicContent}</option>
+              )}
               {CONTENT_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
