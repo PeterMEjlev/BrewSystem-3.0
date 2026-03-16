@@ -183,7 +183,6 @@ const CARBONATION_GUIDELINES = [
 function CarbonationCalculator() {
   const [volumes, setVolumes] = useState('');
   const [tempC, setTempC] = useState('');
-  const [pressureUnit, setPressureUnit] = useState('bar');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
@@ -213,14 +212,10 @@ function CarbonationCalculator() {
       + 4.24267 * V
       - 0.0684226 * V * V;
 
-    const pressure = pressureUnit === 'bar' ? psi * 0.0689476 : psi;
-    setResult(pressure);
+    const bar = psi * 0.0689476;
+    setResult({ bar, psi });
     setError('');
   };
-
-  const displayResult = result !== null
-    ? `${result.toFixed(2)} ${pressureUnit}`
-    : null;
 
   return (
     <div className={styles.calculator}>
@@ -228,20 +223,6 @@ function CarbonationCalculator() {
       <p className={styles.calcSubtitle}>Finds the regulator pressure needed to force-carbonate at a given temperature</p>
 
       <div className={styles.fields}>
-        <div className={styles.field}>
-          <label className={styles.label}>Pressure Unit</label>
-          <div className={styles.segmented}>
-            <button
-              className={`${styles.segBtn} ${pressureUnit === 'bar' ? styles.segActive : ''}`}
-              onClick={() => { playClick(); setPressureUnit('bar'); setResult(null); }}
-            >bar</button>
-            <button
-              className={`${styles.segBtn} ${pressureUnit === 'psi' ? styles.segActive : ''}`}
-              onClick={() => { playClick(); setPressureUnit('psi'); setResult(null); }}
-            >PSI</button>
-          </div>
-        </div>
-
         <div className={styles.field}>
           <label className={styles.label}>Volumes of CO₂</label>
           <input
@@ -277,12 +258,12 @@ function CarbonationCalculator() {
         Calculate
       </button>
 
-      {displayResult && (
+      {result && (
         <div className={styles.results}>
           <div className={styles.resultRow}>
             <span className={styles.resultLabel}>Regulator Setting</span>
             <span className={`${styles.resultValue} ${styles.resultHighlight}`}>
-              {displayResult}
+              {result.bar.toFixed(2)} bar / {result.psi.toFixed(1)} PSI
             </span>
           </div>
         </div>

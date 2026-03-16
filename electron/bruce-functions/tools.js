@@ -117,6 +117,66 @@ function register(bruce, apiCall, emitMessage) {
     'German Wheat Beer':       '3.3 – 4.5',
   };
 
+  // Map common beer style names/abbreviations to CARBONATION_STYLES keys
+  const STYLE_ALIASES = {
+    'ipa':            'American Ales and Lager',
+    'pale ale':       'American Ales and Lager',
+    'american pale ale': 'American Ales and Lager',
+    'apa':            'American Ales and Lager',
+    'american ipa':   'American Ales and Lager',
+    'neipa':          'American Ales and Lager',
+    'hazy ipa':       'American Ales and Lager',
+    'west coast ipa': 'American Ales and Lager',
+    'amber ale':      'American Ales and Lager',
+    'american lager': 'American Ales and Lager',
+    'cream ale':      'American Ales and Lager',
+    'blonde ale':     'American Ales and Lager',
+    'bitter':         'British Style Ales',
+    'esb':            'British Style Ales',
+    'english ale':    'British Style Ales',
+    'mild':           'British Style Ales',
+    'brown ale':      'British Style Ales',
+    'english ipa':    'British Style Ales',
+    'scottish ale':   'British Style Ales',
+    'tripel':         'Belgian Ales',
+    'dubbel':         'Belgian Ales',
+    'saison':         'Belgian Ales',
+    'witbier':        'Belgian Ales',
+    'belgian strong': 'Belgian Ales',
+    'trappist':       'Belgian Ales',
+    'porter':         'Porter, Stout',
+    'stout':          'Porter, Stout',
+    'imperial stout': 'Porter, Stout',
+    'dry stout':      'Porter, Stout',
+    'milk stout':     'Porter, Stout',
+    'oatmeal stout':  'Porter, Stout',
+    'pilsner':        'European Lagers',
+    'pilsener':       'European Lagers',
+    'pils':           'European Lagers',
+    'helles':         'European Lagers',
+    'marzen':         'European Lagers',
+    'märzen':         'European Lagers',
+    'oktoberfest':    'European Lagers',
+    'bock':           'European Lagers',
+    'doppelbock':     'European Lagers',
+    'dunkel':         'European Lagers',
+    'vienna lager':   'European Lagers',
+    'schwarzbier':    'European Lagers',
+    'kolsch':         'European Lagers',
+    'kölsch':         'European Lagers',
+    'hefeweizen':     'German Wheat Beer',
+    'weizen':         'German Wheat Beer',
+    'wheat beer':     'German Wheat Beer',
+    'weissbier':      'German Wheat Beer',
+    'dunkelweizen':   'German Wheat Beer',
+    'kristallweizen': 'German Wheat Beer',
+    'fruit lambic':   'Fruit Lambic',
+    'kriek':          'Fruit Lambic',
+    'framboise':      'Fruit Lambic',
+    'gueuze':         'Lambic',
+    'geuze':          'Lambic',
+  };
+
   bruce.registerFunction(
     'carbonation_calculator',
     'Calculate the CO2 regulator pressure needed to force-carbonate a keg at a given temperature. Provide the desired volumes of CO2 and the keg temperature in °C. If the user mentions a beer style instead of an exact CO2 volume, call this function with ONLY the beer_style parameter (and optionally keg_temp) — do NOT guess a CO2 volume. The function will return the recommended range so you can ask the user to pick a value. IMPORTANT: Once the user picks a CO2 volume, you MUST call this function again with co2_volumes and keg_temp to get the exact pressure — do NOT calculate the pressure yourself.',
@@ -132,21 +192,26 @@ function register(bruce, apiCall, emitMessage) {
     async ({ co2_volumes, keg_temp, beer_style } = {}) => {
       // If a beer style was given, look up the range and ask for clarification
       if (beer_style && co2_volumes == null) {
-        const styleLower = beer_style.toLowerCase();
-        const match = Object.entries(CARBONATION_STYLES).find(([key]) =>
-          key.toLowerCase().includes(styleLower) || styleLower.includes(key.toLowerCase())
-        );
+        const styleLower = beer_style.toLowerCase().trim();
+
+        // Check alias map first, then try direct substring matching
+        const aliasKey = STYLE_ALIASES[styleLower];
+        const match = aliasKey
+          ? [aliasKey, CARBONATION_STYLES[aliasKey]]
+          : Object.entries(CARBONATION_STYLES).find(([key]) =>
+              key.toLowerCase().includes(styleLower) || styleLower.includes(key.toLowerCase())
+            ) || null;
 
         if (match) {
           const [name, range] = match;
           return `${name} is typically carbonated at ${range} volumes of CO2. Ask the user what CO2 volume they'd like within that range, then call this function again with co2_volumes and keg_temp to get the exact pressure.`;
         }
 
-        // No exact match — list all styles
+        // No match — list all styles
         const list = Object.entries(CARBONATION_STYLES)
           .map(([name, range]) => `${name}: ${range} vol`)
           .join('. ');
-        return `I'm not sure which style that matches. Here are the common guidelines: ${list}. Ask the user what CO2 volume they'd like, then call this function again with co2_volumes and keg_temp to get the exact pressure.`;
+        return `I'm not sure which style "${beer_style}" matches. Here are the common guidelines: ${list}. Ask the user what CO2 volume they'd like, then call this function again with co2_volumes and keg_temp to get the exact pressure.`;
       }
 
       if (co2_volumes == null || keg_temp == null) {
