@@ -469,3 +469,61 @@
   font-size: var(--recipe-font-sm);
   color: var(--color-text-secondary);
 }
+
+/* Mash Guidelines */
+.mashContent {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mashStepsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mashStepRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-md);
+}
+
+.mashStepNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  font-size: var(--recipe-font-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.mashStepInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mashStepName {
+  color: var(--color-text-primary);
+  font-size: var(--recipe-font-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.mashStepDetail {
+  font-size: var(--recipe-font-xs);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
