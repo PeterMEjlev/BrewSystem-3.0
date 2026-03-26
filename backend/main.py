@@ -33,16 +33,39 @@ class _SuppressPollingFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_SuppressPollingFilter())
 
 
+# Temperature cache — updated by background task, served instantly from the API
+_temperature_cache: Dict[str, float] = {"bk": -1.0, "mlt": -1.0, "hlt": -1.0}
+
+
+async def _temperature_read_loop():
+    """Background task: continuously read all sensors and update the in-memory cache.
+
+    Sensor reads are offloaded to a thread so the event loop stays responsive.
+    Each read of 3 DS18B20 sensors takes ~2-3 s on the Pi (750 ms per sensor at
+    12-bit resolution), which is why we must never call this inline in an API handler.
+    """
+    logger = logging.getLogger(__name__)
+    while True:
+        try:
+            config = read_config()
+            sensors = config["sensors"]["ds18b20"]
+            temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
+            _temperature_cache.update(temps)
+        except Exception as e:
+            logger.error("Temp read error: %s", e)
+        # Yield briefly to keep the event loop healthy; the sensor read itself
+        # already takes ~2-3 s so this effectively controls the update frequency.
+        await asyncio.sleep(0.5)
+
+
 async def _temperature_log_loop():
-    """Background task: read all three sensors and log them at the configured interval."""
+    """Background task: log cached temperatures at the configured interval."""
     while True:
         config = read_config()
         interval = config.get("app", {}).get("log_interval_seconds", 10)
         await asyncio.sleep(interval)
         try:
-            sensors = config["sensors"]["ds18b20"]
-            temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
-            session_logger.log_reading(**temps)
+            session_logger.log_reading(**_temperature_cache)
         except Exception as e:
             logging.getLogger(__name__).error("Temp log error: %s", e)
 
@@ -59,13 +82,16 @@ def _normalize_config():
 async def lifespan(app: FastAPI):
     _normalize_config()
     session_logger.start_new_session()
-    task = asyncio.create_task(_temperature_log_loop())
+    read_task = asyncio.create_task(_temperature_read_loop())
+    log_task = asyncio.create_task(_temperature_log_loop())
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    read_task.cancel()
+    log_task.cancel()
+    for task in (read_task, log_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Brew System API", lifespan=lifespan)
@@ -407,12 +433,13 @@ async def control_timer(body: TimerActionRequest) -> Dict[str, Any]:
 
 @app.get("/api/hardware/state")
 async def get_full_state() -> Dict[str, Any]:
-    """Return temperatures, control state, and timer in a single response"""
-    config = read_config()
-    sensors = config["sensors"]["ds18b20"]
-    temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
+    """Return temperatures, control state, and timer in a single response.
+
+    Temperatures come from the in-memory cache updated by the background read
+    loop — this endpoint returns immediately without touching the 1-Wire bus.
+    """
     return {
-        "temperatures": temps,
+        "temperatures": _temperature_cache,
         "controlState": _control_state,
         "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]},
     }
@@ -462,10 +489,8 @@ async def get_temperature_average(pot: str, minutes: float) -> Dict[str, Any]:
 
 @app.get("/api/hardware/temperature")
 async def get_temperatures() -> Dict[str, Any]:
-    """Read all three DS18B20 temperature sensors"""
-    config = read_config()
-    sensors = config["sensors"]["ds18b20"]
-    return await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
+    """Return the latest cached DS18B20 temperature readings"""
+    return _temperature_cache
 
 
 # ─── Brewer's Friend recipe endpoint ──────────────────────────────────────────
