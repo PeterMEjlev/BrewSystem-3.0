@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from 'recharts';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
@@ -92,6 +92,12 @@ function startGlobalPolling() {
 // Start polling immediately on module load (not lazily on first mount)
 startGlobalPolling();
 
+function getTouchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 function TemperatureChart() {
   const { theme } = useTheme();
   const [data, setData] = useState(persistedData);
@@ -103,12 +109,17 @@ function TemperatureChart() {
   const [windowMinutes, setWindowMinutes] = useState(WINDOW_MAX);
   const [zoomDomain, setZoomDomain] = useState(null); // { start, end } timestamps or null
   const [isPanning, setIsPanning] = useState(false);
-  const [maxChartPoints, setMaxChartPoints] = useState(500);
+  const [maxChartPoints, setMaxChartPoints] = useState(200); // lowered from 500 for RPi performance
   const [tooltipState, setTooltipState] = useState(null); // { payload, label, x, y }
   const chartContainerRef = useRef(null);
-  const panRef = useRef(null); // { startX, domainStart, domainEnd }
+  const panRef = useRef(null); // { startX, domainStart, domainEnd, chartWidth }
   const touchRef = useRef(null); // { distance, centerX, domainStart, domainEnd }
   const dragHappenedRef = useRef(false);
+  // RAF throttle refs — prevent re-rendering on every pixel during pan/zoom
+  const panRafRef = useRef(null);
+  const latestPanRef = useRef(null);
+  const touchRafRef = useRef(null);
+  const latestTouchRef = useRef(null);
 
   // Subscribe to data updates (polling already started at module level)
   useEffect(() => {
@@ -123,7 +134,7 @@ function TemperatureChart() {
   useEffect(() => {
     fetch('/api/settings')
       .then((r) => r.json())
-      .then((s) => setMaxChartPoints(s?.app?.max_chart_points ?? 500))
+      .then((s) => setMaxChartPoints(s?.app?.max_chart_points ?? 200))
       .catch(() => {});
   }, []);
 
@@ -137,18 +148,21 @@ function TemperatureChart() {
     }));
   };
 
-  // Derive the visible slice from the full data based on selected window
-  const now = data.length > 0 ? data[data.length - 1].ts : 0;
-  const cutoff = now - windowMinutes * 60 * 1000;
-  const windowData = windowMinutes >= WINDOW_MAX
-    ? data
-    : data.filter((p) => p.ts >= cutoff);
+  // Memoized window slice — only recomputes when data or windowMinutes changes, not on every render
+  const windowData = useMemo(() => {
+    if (data.length === 0) return data;
+    const now = data[data.length - 1].ts;
+    const cutoff = now - windowMinutes * 60 * 1000;
+    return windowMinutes >= WINDOW_MAX ? data : data.filter((p) => p.ts >= cutoff);
+  }, [data, windowMinutes]);
 
-  // Apply zoom filter on top of slider window, then downsample for rendering
-  const displayDataRaw = zoomDomain
-    ? windowData.filter((p) => p.ts >= zoomDomain.start && p.ts <= zoomDomain.end)
-    : windowData;
-  const displayData = lttbDownsample(displayDataRaw, maxChartPoints);
+  // Memoized display data — only recomputes when zoom domain, window, or point limit changes
+  const displayData = useMemo(() => {
+    const raw = zoomDomain
+      ? windowData.filter((p) => p.ts >= zoomDomain.start && p.ts <= zoomDomain.end)
+      : windowData;
+    return lttbDownsample(raw, maxChartPoints);
+  }, [windowData, zoomDomain, maxChartPoints]);
 
   // Helper: get full time bounds of the slider window
   const getWindowBounds = useCallback(() => {
@@ -221,18 +235,27 @@ function TemperatureChart() {
     setZoomDomain({ start: newStart, end: newEnd });
   }, [getWindowBounds]);
 
-  // --- Mouse wheel zoom ---
+  // --- Mouse wheel zoom with RAF throttle ---
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container) return;
+    let latestWheel = null;
+    let wheelRaf = null;
     const handler = (e) => {
       e.preventDefault();
-      const ratio = xToRatio(e.clientX);
-      const factor = e.deltaY > 0 ? 1.25 : 0.8;
-      applyZoom(factor, ratio);
+      latestWheel = { factor: e.deltaY > 0 ? 1.25 : 0.8, ratio: xToRatio(e.clientX) };
+      if (wheelRaf) return;
+      wheelRaf = requestAnimationFrame(() => {
+        if (latestWheel) applyZoom(latestWheel.factor, latestWheel.ratio);
+        wheelRaf = null;
+        latestWheel = null;
+      });
     };
     container.addEventListener('wheel', handler, { passive: false });
-    return () => container.removeEventListener('wheel', handler);
+    return () => {
+      container.removeEventListener('wheel', handler);
+      if (wheelRaf) cancelAnimationFrame(wheelRaf);
+    };
   }, [xToRatio, applyZoom]);
 
   // --- Mouse drag pan ---
@@ -241,18 +264,29 @@ function TemperatureChart() {
     if (!zoomDomain || e.button !== 0) return;
     e.preventDefault();
     setIsPanning(true);
-    panRef.current = { startX: e.clientX, domainStart: zoomDomain.start, domainEnd: zoomDomain.end };
+    // Cache chartWidth here to avoid getBoundingClientRect on every mousemove
+    const rect = chartContainerRef.current?.getBoundingClientRect();
+    panRef.current = {
+      startX: e.clientX,
+      domainStart: zoomDomain.start,
+      domainEnd: zoomDomain.end,
+      chartWidth: rect ? rect.width - 110 : 800,
+    };
   }, [zoomDomain]);
 
   const handleMouseMove = useCallback((e) => {
     if (!panRef.current || !isPanning) return;
     dragHappenedRef.current = true;
-    const container = chartContainerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const chartWidth = rect.width - 110; // approximate chart drawing width
-    const deltaRatio = (e.clientX - panRef.current.startX) / chartWidth;
-    applyPan(deltaRatio, { start: panRef.current.domainStart, end: panRef.current.domainEnd });
+    const deltaRatio = (e.clientX - panRef.current.startX) / panRef.current.chartWidth;
+    // Store latest pan params; RAF callback picks up the most recent values
+    latestPanRef.current = { deltaRatio, refDomain: { start: panRef.current.domainStart, end: panRef.current.domainEnd } };
+    if (panRafRef.current) return; // RAF already scheduled for this frame
+    panRafRef.current = requestAnimationFrame(() => {
+      const p = latestPanRef.current;
+      if (p) applyPan(p.deltaRatio, p.refDomain);
+      panRafRef.current = null;
+      latestPanRef.current = null;
+    });
   }, [isPanning, applyPan]);
 
   const handleMouseUp = useCallback(() => {
@@ -261,12 +295,6 @@ function TemperatureChart() {
   }, []);
 
   // --- Touch: pinch zoom + single-finger pan ---
-  const getTouchDistance = (touches) => {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
   const handleTouchStart = useCallback((e) => {
     dragHappenedRef.current = false;
     if (e.touches.length === 2) {
@@ -276,9 +304,15 @@ function TemperatureChart() {
       const bounds = getVisibleBounds();
       touchRef.current = { distance: dist, centerX, domainStart: bounds?.start, domainEnd: bounds?.end };
     } else if (e.touches.length === 1 && zoomDomain) {
-      // Pan start
+      // Pan start — cache chartWidth to avoid reflow on every touchmove
       setIsPanning(true);
-      panRef.current = { startX: e.touches[0].clientX, domainStart: zoomDomain.start, domainEnd: zoomDomain.end };
+      const rect = chartContainerRef.current?.getBoundingClientRect();
+      panRef.current = {
+        startX: e.touches[0].clientX,
+        domainStart: zoomDomain.start,
+        domainEnd: zoomDomain.end,
+        chartWidth: rect ? rect.width - 110 : 800,
+      };
     }
   }, [zoomDomain, getVisibleBounds]);
 
@@ -286,36 +320,44 @@ function TemperatureChart() {
     if (e.touches.length === 2 && touchRef.current) {
       e.preventDefault();
       const newDist = getTouchDistance(e.touches);
-      const scale = touchRef.current.distance / newDist; // pinch in = scale > 1 = zoom in
-      const pivotRatio = xToRatio(touchRef.current.centerX);
-      const refDomain = { start: touchRef.current.domainStart, end: touchRef.current.domainEnd };
-      const refRange = refDomain.end - refDomain.start;
-      const newRange = refRange * scale;
-
-      const windowBounds = getWindowBounds();
-      if (!windowBounds) return;
-      const fullRange = windowBounds.end - windowBounds.start;
-      if (newRange >= fullRange) { setZoomDomain(null); return; }
-      if (newRange < MIN_ZOOM_MS) return;
-
-      const pivot = refDomain.start + refRange * pivotRatio;
-      let newStart = pivot - newRange * pivotRatio;
-      let newEnd = pivot + newRange * (1 - pivotRatio);
-      if (newStart < windowBounds.start) { newEnd += windowBounds.start - newStart; newStart = windowBounds.start; }
-      if (newEnd > windowBounds.end) { newStart -= newEnd - windowBounds.end; newEnd = windowBounds.end; }
-      newStart = Math.max(newStart, windowBounds.start);
-      newEnd = Math.min(newEnd, windowBounds.end);
-      setZoomDomain({ start: newStart, end: newEnd });
+      latestTouchRef.current = { type: 'pinch', newDist };
     } else if (e.touches.length === 1 && panRef.current && isPanning) {
       e.preventDefault();
       dragHappenedRef.current = true;
-      const container = chartContainerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const chartWidth = rect.width - 110;
-      const deltaRatio = (e.touches[0].clientX - panRef.current.startX) / chartWidth;
-      applyPan(deltaRatio, { start: panRef.current.domainStart, end: panRef.current.domainEnd });
+      const deltaRatio = (e.touches[0].clientX - panRef.current.startX) / panRef.current.chartWidth;
+      latestTouchRef.current = { type: 'pan', deltaRatio, refDomain: { start: panRef.current.domainStart, end: panRef.current.domainEnd } };
+    } else {
+      return;
     }
+
+    if (touchRafRef.current) return; // RAF already scheduled for this frame
+    touchRafRef.current = requestAnimationFrame(() => {
+      const t = latestTouchRef.current;
+      latestTouchRef.current = null;
+      touchRafRef.current = null;
+      if (!t) return;
+
+      if (t.type === 'pinch' && touchRef.current) {
+        const scale = touchRef.current.distance / t.newDist;
+        const pivotRatio = xToRatio(touchRef.current.centerX);
+        const refDomain = { start: touchRef.current.domainStart, end: touchRef.current.domainEnd };
+        const refRange = refDomain.end - refDomain.start;
+        const newRange = refRange * scale;
+        const windowBounds = getWindowBounds();
+        if (!windowBounds) return;
+        const fullRange = windowBounds.end - windowBounds.start;
+        if (newRange >= fullRange) { setZoomDomain(null); return; }
+        if (newRange < MIN_ZOOM_MS) return;
+        const pivot = refDomain.start + refRange * pivotRatio;
+        let newStart = pivot - newRange * pivotRatio;
+        let newEnd = pivot + newRange * (1 - pivotRatio);
+        if (newStart < windowBounds.start) { newEnd += windowBounds.start - newStart; newStart = windowBounds.start; }
+        if (newEnd > windowBounds.end) { newStart -= newEnd - windowBounds.end; newEnd = windowBounds.end; }
+        setZoomDomain({ start: Math.max(newStart, windowBounds.start), end: Math.min(newEnd, windowBounds.end) });
+      } else if (t.type === 'pan') {
+        applyPan(t.deltaRatio, t.refDomain);
+      }
+    });
   }, [isPanning, xToRatio, getWindowBounds, applyPan]);
 
   const handleTouchEnd = useCallback(() => {
@@ -345,38 +387,26 @@ function TemperatureChart() {
     });
   }, [displayData]);
 
-  // Determine if the visible range is less than 1 minute (show seconds in that case)
-  const visibleRangeMs = displayData.length >= 2
-    ? displayData[displayData.length - 1].ts - displayData[0].ts
-    : Infinity;
-  const isSubMinuteZoom = visibleRangeMs < 60000;
-
-  // Generate tick values at exact minute boundaries for the XAxis
-  const xTicks = (() => {
-    if (displayData.length < 2) return undefined;
+  // Memoized tick/range calculations — avoids getBoundingClientRect on every render
+  const { isSubMinuteZoom, xTicks } = useMemo(() => {
+    if (displayData.length < 2) return { isSubMinuteZoom: false, xTicks: undefined };
     const first = displayData[0].ts;
     const last = displayData[displayData.length - 1].ts;
-    if (isSubMinuteZoom) return undefined; // let recharts auto-generate ticks
+    const rangeMs = last - first;
+    if (rangeMs < 60000) return { isSubMinuteZoom: true, xTicks: undefined };
 
-    const totalMinutes = (last - first) / 60000;
-    // Estimate how many labels fit (~80px per label, chart ≈ container - 110px margins)
+    const totalMinutes = rangeMs / 60000;
     const containerWidth = chartContainerRef.current?.getBoundingClientRect().width ?? 800;
     const chartWidth = containerWidth - 110;
     const maxTicks = Math.max(2, Math.floor(chartWidth / 80));
-
-    // Pick a step in whole minutes that keeps tick count under maxTicks
-    // Use nice steps: 1, 2, 5, 10, 15, 30, 60
     const niceSteps = [1, 2, 5, 10, 15, 30, 60];
-    let stepMinutes = niceSteps.find((s) => totalMinutes / s <= maxTicks) ?? 60;
-
+    const stepMinutes = niceSteps.find((s) => totalMinutes / s <= maxTicks) ?? 60;
     const stepMs = stepMinutes * 60000;
     const firstTick = Math.ceil(first / stepMs) * stepMs;
     const ticks = [];
-    for (let t = firstTick; t <= last; t += stepMs) {
-      ticks.push(t);
-    }
-    return ticks.length > 0 ? ticks : undefined;
-  })();
+    for (let t = firstTick; t <= last; t += stepMs) ticks.push(t);
+    return { isSubMinuteZoom: false, xTicks: ticks.length > 0 ? ticks : undefined };
+  }, [displayData]);
 
   const windowLabel = windowMinutes >= WINDOW_MAX
     ? 'Full session'
@@ -480,9 +510,9 @@ function TemperatureChart() {
               label={{ value: '°C', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
             />
             <Legend wrapperStyle={{ color: '#cbd5e1' }} itemSorter={null} />
-            {visibility.BK && <Line type="monotone" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
-            {visibility.MLT && <Line type="monotone" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
-            {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
+            {visibility.BK && <Line type="linear" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
+            {visibility.MLT && <Line type="linear" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
+            {visibility.HLT && <Line type="linear" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
           </LineChart>
         </ResponsiveContainer>
         {tooltipState && (
