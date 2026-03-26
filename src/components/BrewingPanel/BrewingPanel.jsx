@@ -31,6 +31,11 @@ function BrewingPanel() {
     localStorage.getItem('brewSystemEnvironment') !== 'development'
   ).current;
 
+  // Timestamp of the last user-initiated command.  Polling is suppressed for a
+  // short window after a command so that stale backend responses cannot
+  // overwrite the optimistic local state.
+  const lastCommandTime = useRef(0);
+
   useEffect(() => {
     fetch('/api/settings')
       .then((r) => r.json())
@@ -64,11 +69,17 @@ function BrewingPanel() {
     }
 
     // Poll full state every 500ms so external changes (e.g. Bruce voice
-    // assistant) are reflected in the UI.
+    // assistant) are reflected in the UI.  Polling is skipped for 1.5 s after
+    // the last user command to avoid stale responses overwriting optimistic state.
+    const POLL_SUPPRESS_MS = 1500;
     const interval = setInterval(async () => {
       if (isProduction) {
+        if (Date.now() - lastCommandTime.current < POLL_SUPPRESS_MS) return;
         const state = await hardwareApi.getFullState();
         if (state) {
+          // If a command was sent while the request was in-flight, discard this
+          // response — it may contain stale control state.
+          if (Date.now() - lastCommandTime.current < POLL_SUPPRESS_MS) return;
           setStates((prev) => ({
             pots: {
               BK:  { ...prev.pots.BK,  pv: state.temperatures.bk,  ...state.controlState.pots.BK  },
@@ -105,6 +116,7 @@ function BrewingPanel() {
   };
 
   const handlePotUpdate = (potName, updates) => {
+    lastCommandTime.current = Date.now();
     if (updates.heaterOn !== undefined) {
       brewSystem.setPotHeater(potName, updates.heaterOn);
       if (isProduction) hardwareApi.setPotPower(potName, updates.heaterOn);
@@ -160,6 +172,7 @@ function BrewingPanel() {
   };
 
   const handlePumpUpdate = (pumpName, updates) => {
+    lastCommandTime.current = Date.now();
     if (updates.on !== undefined) {
       brewSystem.setPump(pumpName, updates.on);
       if (isProduction) hardwareApi.setPumpPower(pumpName, updates.on);
