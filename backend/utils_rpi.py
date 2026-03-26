@@ -138,7 +138,7 @@ def read_ds18b20(serial_code):
                 raise ValueError("Temperature data not found.")
             temp_c = float(temp_output[1]) / 1000.0
             end_time = time.time()
-            print(f"read_ds18b20 time: {end_time - start_time:.3f}s")
+            #print(f"read_ds18b20 time: {end_time - start_time:.3f}s")
             return temp_c
         except FileNotFoundError:
             return -1.0
