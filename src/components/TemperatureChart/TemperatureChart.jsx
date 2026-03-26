@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from 'recharts';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -104,9 +104,11 @@ function TemperatureChart() {
   const [zoomDomain, setZoomDomain] = useState(null); // { start, end } timestamps or null
   const [isPanning, setIsPanning] = useState(false);
   const [maxChartPoints, setMaxChartPoints] = useState(500);
+  const [tooltipState, setTooltipState] = useState(null); // { payload, label, x, y }
   const chartContainerRef = useRef(null);
   const panRef = useRef(null); // { startX, domainStart, domainEnd }
   const touchRef = useRef(null); // { distance, centerX, domainStart, domainEnd }
+  const dragHappenedRef = useRef(false);
 
   // Subscribe to data updates (polling already started at module level)
   useEffect(() => {
@@ -125,8 +127,8 @@ function TemperatureChart() {
       .catch(() => {});
   }, []);
 
-  // Reset zoom when slider changes
-  useEffect(() => { setZoomDomain(null); }, [windowMinutes]);
+  // Reset zoom and tooltip when slider changes
+  useEffect(() => { setZoomDomain(null); setTooltipState(null); }, [windowMinutes]);
 
   const toggleVisibility = (pot) => {
     setVisibility((prev) => ({
@@ -235,6 +237,7 @@ function TemperatureChart() {
 
   // --- Mouse drag pan ---
   const handleMouseDown = useCallback((e) => {
+    dragHappenedRef.current = false;
     if (!zoomDomain || e.button !== 0) return;
     e.preventDefault();
     setIsPanning(true);
@@ -243,6 +246,7 @@ function TemperatureChart() {
 
   const handleMouseMove = useCallback((e) => {
     if (!panRef.current || !isPanning) return;
+    dragHappenedRef.current = true;
     const container = chartContainerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
@@ -264,6 +268,7 @@ function TemperatureChart() {
   };
 
   const handleTouchStart = useCallback((e) => {
+    dragHappenedRef.current = false;
     if (e.touches.length === 2) {
       // Pinch start
       const dist = getTouchDistance(e.touches);
@@ -303,6 +308,7 @@ function TemperatureChart() {
       setZoomDomain({ start: newStart, end: newEnd });
     } else if (e.touches.length === 1 && panRef.current && isPanning) {
       e.preventDefault();
+      dragHappenedRef.current = true;
       const container = chartContainerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -317,6 +323,27 @@ function TemperatureChart() {
     setIsPanning(false);
     panRef.current = null;
   }, []);
+
+  // Click-to-show tooltip — use activeIndex to look up the data point directly
+  const handleChartClick = useCallback((chartData) => {
+    if (dragHappenedRef.current) return;
+    const index = chartData?.activeIndex;
+    if (index == null || !chartData.activeCoordinate) {
+      setTooltipState(null);
+      return;
+    }
+    const point = displayData[index];
+    if (!point) {
+      setTooltipState(null);
+      return;
+    }
+    // activeCoordinate is in SVG space; the SVG starts after container padding (24px)
+    setTooltipState({
+      point,
+      x: chartData.activeCoordinate.x + 24,
+      y: chartData.activeCoordinate.y + 24,
+    });
+  }, [displayData]);
 
   // Determine if the visible range is less than 1 minute (show seconds in that case)
   const visibleRangeMs = displayData.length >= 2
@@ -428,7 +455,7 @@ function TemperatureChart() {
           </button>
         )}
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={displayData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+          <LineChart data={displayData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }} onClick={handleChartClick}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis
               dataKey="ts"
@@ -452,24 +479,23 @@ function TemperatureChart() {
               tickLine={{ stroke: '#94a3b8' }}
               label={{ value: '°C', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
             />
-            <Tooltip
-              isAnimationActive={false}
-              contentStyle={{
-                backgroundColor: theme.bgSecondary,
-                border: '1px solid #475569',
-                borderRadius: '8px',
-              }}
-              labelStyle={{ color: '#cbd5e1' }}
-              itemStyle={{ color: '#f1f5f9' }}
-              labelFormatter={(ts) => formatTime(new Date(ts))}
-              formatter={(value, name) => [`${Number(value).toFixed(1)} °C`, name]}
-            />
             <Legend wrapperStyle={{ color: '#cbd5e1' }} itemSorter={null} />
             {visibility.BK && <Line type="monotone" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
             {visibility.MLT && <Line type="monotone" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
-            {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />
+            {visibility.HLT && <Line type="monotone" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
           </LineChart>
         </ResponsiveContainer>
+        {tooltipState && (
+          <div
+            className={styles.clickTooltip}
+            style={{ left: tooltipState.x, top: tooltipState.y }}
+          >
+            <div className={styles.tooltipLabel}>{formatTime(new Date(tooltipState.point.ts))}</div>
+            {visibility.BK && <div style={{ color: theme.vesselBK }}>BK: {Number(tooltipState.point.BK).toFixed(1)} °C</div>}
+            {visibility.MLT && <div style={{ color: theme.vesselMLT }}>MLT: {Number(tooltipState.point.MLT).toFixed(1)} °C</div>}
+            {visibility.HLT && <div style={{ color: theme.vesselHLT }}>HLT: {Number(tooltipState.point.HLT).toFixed(1)} °C</div>}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -140,6 +140,11 @@
   min-height: 400px;
   touch-action: none;
   user-select: none;
+  outline: none;
+}
+
+.chartContainer * {
+  outline: none;
 }
 
 .chartContainer.zoomed {
@@ -170,4 +175,24 @@
 .resetZoom:hover {
   opacity: 1;
   background: var(--color-bg-secondary);
+}
+
+.clickTooltip {
+  position: absolute;
+  background: var(--color-bg-secondary, #1e293b);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  padding: 8px 12px;
+  pointer-events: none;
+  z-index: 10;
+  transform: translate(-50%, calc(-100% - 12px));
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.tooltipLabel {
+  color: #cbd5e1;
+  margin-bottom: 2px;
+  font-weight: var(--font-weight-semibold);
 }
