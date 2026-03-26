@@ -566,6 +566,8 @@ async def get_recipe(recipe_id: int) -> Dict[str, Any]:
             "fermentables": _extract_fermentables(recipe),
             "hops": _extract_hops(recipe),
             "yeast": _extract_yeast(recipe),
+            "mashGuidelines": _extract_mash_guidelines(recipe),
+            "otherIngredients": _extract_other_ingredients(recipe),
             "waterProfile": _extract_water_profile(recipe),
         }
 
@@ -698,6 +700,59 @@ def _extract_yeast(recipe: Dict) -> list:
         }
         for y in yeasts
     ]
+
+
+def _extract_mash_guidelines(recipe: Dict) -> Optional[Dict[str, Any]]:
+    """Extract full mash guidelines: all steps and notes."""
+    mash_steps = recipe.get("mashsteps", [])
+    steps = []
+    for s in mash_steps:
+        temp = s.get("temp") or s.get("steptemp")
+        time_min = s.get("mashtime") or s.get("steptime")
+        name = s.get("mashtype") or s.get("name") or ""
+        amount = s.get("amount")
+        unit = s.get("unit", "")
+        step_data = {
+            "name": name,
+            "temp": f"{temp}°C" if temp else None,
+            "time": time_min,
+        }
+        if amount:
+            step_data["amount"] = f"{amount} {unit}".strip()
+        steps.append(step_data)
+
+    notes = recipe.get("mashnotes") or recipe.get("notes_mash") or None
+
+    if not steps and not notes:
+        return None
+
+    return {
+        "steps": steps,
+        "notes": notes,
+    }
+
+
+def _extract_other_ingredients(recipe: Dict) -> list:
+    """Extract miscellaneous / other ingredients from the recipe."""
+    others = recipe.get("others", []) or recipe.get("miscs", [])
+    result = []
+    for m in others:
+        name = m.get("name", "")
+        amount = m.get("amount", "")
+        unit = m.get("unit", "")
+        use = m.get("otheruse") or m.get("miscuse") or m.get("use", "")
+        time_val = m.get("othertime") or m.get("misctime") or m.get("time", "")
+        other_type = m.get("othertype") or m.get("type", "")
+        if name:
+            result.append({
+                "name": name,
+                "amount": amount,
+                "unit": unit,
+                "use": use,
+                "time": time_val,
+                "type": other_type,
+            })
+    return result
 
 
 # Serve React build

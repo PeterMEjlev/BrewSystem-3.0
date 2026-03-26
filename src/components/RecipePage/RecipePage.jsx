@@ -19,8 +19,8 @@ function RecipePage() {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       const saved = sessionStorage.getItem('recipeSectionsCollapsed');
-      return saved ? JSON.parse(saved) : { fermentables: true, hops: true, yeast: true, water: true };
-    } catch { return { fermentables: true, hops: true, yeast: true, water: true }; }
+      return saved ? JSON.parse(saved) : { fermentables: true, hops: true, otherIngredients: true, yeast: true, mashGuidelines: true, water: true };
+    } catch { return { fermentables: true, hops: true, otherIngredients: true, yeast: true, mashGuidelines: true, water: true }; }
   });
 
   const toggleSection = (key) => setCollapsed(prev => {
@@ -354,6 +354,32 @@ function RecipePage() {
           </div>
         )}
 
+        {recipe.otherIngredients && recipe.otherIngredients.length > 0 && (
+          <div className={styles.section}>
+            <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('otherIngredients'); }}>
+              <span>🧪 Other Ingredients</span>
+              <svg className={`${styles.collapseChevron} ${collapsed.otherIngredients ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {!collapsed.otherIngredients && (
+              <div className={styles.ingredientList}>
+                {recipe.otherIngredients.map((m, i) => (
+                  <div key={i} className={styles.ingredientRow}>
+                    <span className={styles.ingredientName}>{m.name}</span>
+                    <span className={styles.ingredientDetail}>
+                      {m.amount}{m.unit ? ` ${m.unit}` : ''}
+                      {m.type ? ` · ${m.type}` : ''}
+                      {m.use ? ` · ${m.use}` : ''}
+                      {m.time ? ` · ${m.time} min` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {recipe.yeast.length > 0 && (
           <div className={styles.section}>
             <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('yeast'); }}>
@@ -373,6 +399,45 @@ function RecipePage() {
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {recipe.mashGuidelines && (
+          <div className={styles.section}>
+            <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('mashGuidelines'); }}>
+              <span>🌡️ Mash Guidelines</span>
+              <svg className={`${styles.collapseChevron} ${collapsed.mashGuidelines ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {!collapsed.mashGuidelines && (
+              <div className={styles.mashContent}>
+                {recipe.mashGuidelines.steps.length > 0 && (
+                  <div className={styles.mashStepsList}>
+                    {recipe.mashGuidelines.steps.map((s, i) => (
+                      <div key={i} className={styles.mashStepRow}>
+                        <span className={styles.mashStepNumber}>{i + 1}</span>
+                        <div className={styles.mashStepInfo}>
+                          <span className={styles.mashStepName}>{s.name || `Step ${i + 1}`}</span>
+                          <span className={styles.mashStepDetail}>
+                            {s.temp || ''}
+                            {s.temp && s.time ? ' · ' : ''}
+                            {s.time ? `${s.time} min` : ''}
+                            {s.amount ? ` · ${s.amount}` : ''}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {recipe.mashGuidelines.notes && (
+                  <div className={styles.waterMeta}>
+                    <span className={styles.waterMetaLabel}>Notes</span>
+                    <span className={styles.waterMetaValue}>{recipe.mashGuidelines.notes}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
