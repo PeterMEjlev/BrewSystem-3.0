@@ -6,9 +6,22 @@ const path = require('path');
 
 const isDev = process.env.NODE_ENV === 'development';
 const LOAD_URL = isDev ? 'http://localhost:5173' : 'http://localhost:8000';
+const isLinux = process.platform === 'linux';
 
 // Limit V8 heap for Pi memory constraints
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
+
+// RPi-specific Chromium flags — software rendering is more reliable on ARM
+if (isLinux) {
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+  app.commandLine.appendSwitch('num-raster-threads', '2');
+  app.commandLine.appendSwitch('disable-smooth-scrolling');
+  app.commandLine.appendSwitch('disable-animations');
+  app.commandLine.appendSwitch('wm-window-animations-disabled');
+}
 
 let bruceProcess = null;
 let mainWindow = null;

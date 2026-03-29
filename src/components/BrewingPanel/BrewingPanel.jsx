@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
 import PotCard from './PotCard';
@@ -36,6 +36,15 @@ function BrewingPanel() {
   // overwrite the optimistic local state.
   const lastCommandTime = useRef(0);
 
+  // Keep a ref to current state so stable callbacks can read fresh values
+  // without appearing in useCallback dependency arrays.
+  const statesRef = useRef(states);
+  statesRef.current = states;
+  const priorityPotRef = useRef(priorityPot);
+  priorityPotRef.current = priorityPot;
+  const maxWattsRef = useRef(maxWatts);
+  maxWattsRef.current = maxWatts;
+
   useEffect(() => {
     fetch('/api/settings')
       .then((r) => r.json())
@@ -68,10 +77,12 @@ function BrewingPanel() {
       });
     }
 
-    // Poll full state every 500ms so external changes (e.g. Bruce voice
-    // assistant) are reflected in the UI.  Polling is skipped for 1.5 s after
-    // the last user command to avoid stale responses overwriting optimistic state.
-    const POLL_SUPPRESS_MS = 1500;
+    // Poll full state every 1500ms so external changes (e.g. Bruce voice
+    // assistant) are reflected in the UI.  Sensors update every ~2-3 s on the
+    // Pi so polling faster than that is wasted CPU.  Polling is skipped for
+    // 2 s after the last user command to avoid stale responses overwriting
+    // optimistic state.
+    const POLL_SUPPRESS_MS = 2000;
     const interval = setInterval(async () => {
       if (isProduction) {
         if (Date.now() - lastCommandTime.current < POLL_SUPPRESS_MS) return;
@@ -96,7 +107,7 @@ function BrewingPanel() {
       } else {
         setStates(brewSystem.getAllStates());
       }
-    }, 500);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [isProduction]);
@@ -115,8 +126,11 @@ function BrewingPanel() {
     };
   };
 
-  const handlePotUpdate = (potName, updates) => {
+  const handlePotUpdate = useCallback((potName, updates) => {
     lastCommandTime.current = Date.now();
+    const s = statesRef.current;
+    const mw = maxWattsRef.current;
+    const pp = priorityPotRef.current;
     if (updates.heaterOn !== undefined) {
       brewSystem.setPotHeater(potName, updates.heaterOn);
       if (isProduction) hardwareApi.setPotPower(potName, updates.heaterOn);
@@ -136,29 +150,29 @@ function BrewingPanel() {
       if (isProduction) {
         hardwareApi.setPotEfficiency(potName, updates.efficiency);
         // Throttle the non-priority (yielding) pot to stay within the remaining headroom
-        if (potName === 'BK' && states.pots.HLT.heaterOn) {
-          const usedByBk = (states.pots.BK.heaterOn ? updates.efficiency : 0) / 100 * BK_MAX_WATTS;
-          const newHltCap = Math.max(0, Math.min(100, ((maxWatts - usedByBk) / HLT_MAX_WATTS) * 100));
-          hardwareApi.setPotEfficiency('HLT', Math.min(states.pots.HLT.efficiency, newHltCap));
-        } else if (potName === 'HLT' && states.pots.BK.heaterOn) {
-          const usedByHlt = (states.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * HLT_MAX_WATTS;
-          const newBkCap = Math.max(0, Math.min(100, ((maxWatts - usedByHlt) / BK_MAX_WATTS) * 100));
-          hardwareApi.setPotEfficiency('BK', Math.min(states.pots.BK.efficiency, newBkCap));
+        if (potName === 'BK' && s.pots.HLT.heaterOn) {
+          const usedByBk = (s.pots.BK.heaterOn ? updates.efficiency : 0) / 100 * BK_MAX_WATTS;
+          const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
+          hardwareApi.setPotEfficiency('HLT', Math.min(s.pots.HLT.efficiency, newHltCap));
+        } else if (potName === 'HLT' && s.pots.BK.heaterOn) {
+          const usedByHlt = (s.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * HLT_MAX_WATTS;
+          const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / BK_MAX_WATTS) * 100));
+          hardwareApi.setPotEfficiency('BK', Math.min(s.pots.BK.efficiency, newBkCap));
         }
       }
     }
     // When a heater is toggled, resync the yielding pot's efficiency to hardware
     if (isProduction && (potName === 'BK' || potName === 'HLT') && updates.heaterOn !== undefined) {
-      const newBkOn = potName === 'BK' ? updates.heaterOn : states.pots.BK.heaterOn;
-      const newHltOn = potName === 'HLT' ? updates.heaterOn : states.pots.HLT.heaterOn;
-      if (priorityPot === 'BK' && newHltOn) {
-        const usedByBk = (newBkOn ? states.pots.BK.efficiency : 0) / 100 * BK_MAX_WATTS;
-        const newHltCap = Math.max(0, Math.min(100, ((maxWatts - usedByBk) / HLT_MAX_WATTS) * 100));
-        hardwareApi.setPotEfficiency('HLT', Math.min(states.pots.HLT.efficiency, newHltCap));
-      } else if (priorityPot === 'HLT' && newBkOn) {
-        const usedByHlt = (newHltOn ? states.pots.HLT.efficiency : 0) / 100 * HLT_MAX_WATTS;
-        const newBkCap = Math.max(0, Math.min(100, ((maxWatts - usedByHlt) / BK_MAX_WATTS) * 100));
-        hardwareApi.setPotEfficiency('BK', Math.min(states.pots.BK.efficiency, newBkCap));
+      const newBkOn = potName === 'BK' ? updates.heaterOn : s.pots.BK.heaterOn;
+      const newHltOn = potName === 'HLT' ? updates.heaterOn : s.pots.HLT.heaterOn;
+      if (pp === 'BK' && newHltOn) {
+        const usedByBk = (newBkOn ? s.pots.BK.efficiency : 0) / 100 * BK_MAX_WATTS;
+        const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
+        hardwareApi.setPotEfficiency('HLT', Math.min(s.pots.HLT.efficiency, newHltCap));
+      } else if (pp === 'HLT' && newBkOn) {
+        const usedByHlt = (newHltOn ? s.pots.HLT.efficiency : 0) / 100 * HLT_MAX_WATTS;
+        const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / BK_MAX_WATTS) * 100));
+        hardwareApi.setPotEfficiency('BK', Math.min(s.pots.BK.efficiency, newBkCap));
       }
     }
     if (isProduction) {
@@ -169,9 +183,9 @@ function BrewingPanel() {
     } else {
       setStates(mergeWithRealPv);
     }
-  };
+  }, [isProduction]);
 
-  const handlePumpUpdate = (pumpName, updates) => {
+  const handlePumpUpdate = useCallback((pumpName, updates) => {
     lastCommandTime.current = Date.now();
     if (updates.on !== undefined) {
       brewSystem.setPump(pumpName, updates.on);
@@ -189,7 +203,7 @@ function BrewingPanel() {
     } else {
       setStates(mergeWithRealPv);
     }
-  };
+  }, [isProduction]);
 
   // Derive effective (throttled) power and slider caps — priority pot gets its requested
   // efficiency; the other pot yields to fit within the remaining headroom.
@@ -213,6 +227,13 @@ function BrewingPanel() {
   const totalWatts = bkWatts + hltWatts;
   const isOverLimit = totalWatts > maxWatts;
 
+  // Stable per-device callbacks — identity never changes so memo'd children skip re-renders
+  const onUpdateBK = useCallback((updates) => handlePotUpdate('BK', updates), [handlePotUpdate]);
+  const onUpdateMLT = useCallback(() => {}, []);
+  const onUpdateHLT = useCallback((updates) => handlePotUpdate('HLT', updates), [handlePotUpdate]);
+  const onUpdateP1 = useCallback((updates) => handlePumpUpdate('P1', updates), [handlePumpUpdate]);
+  const onUpdateP2 = useCallback((updates) => handlePumpUpdate('P2', updates), [handlePumpUpdate]);
+
   return (
     <div className={styles.brewingPanel}>
       {/* Pot Cards Row - Strict order: BK, MLT, HLT */}
@@ -225,7 +246,7 @@ function BrewingPanel() {
           effectiveEfficiency={bkEffective}
           potMaxWatts={BK_MAX_WATTS}
           efficiencyCap={bkCap}
-          onUpdate={(updates) => handlePotUpdate('BK', updates)}
+          onUpdate={onUpdateBK}
         />
         <PotCard
           name="MLT"
@@ -235,7 +256,7 @@ function BrewingPanel() {
           effectiveEfficiency={0}
           potMaxWatts={0}
           efficiencyCap={100}
-          onUpdate={() => {}}
+          onUpdate={onUpdateMLT}
         />
         <PotCard
           name="HLT"
@@ -245,7 +266,7 @@ function BrewingPanel() {
           effectiveEfficiency={hltEffective}
           potMaxWatts={HLT_MAX_WATTS}
           efficiencyCap={hltCap}
-          onUpdate={(updates) => handlePotUpdate('HLT', updates)}
+          onUpdate={onUpdateHLT}
         />
       </div>
 
@@ -254,13 +275,13 @@ function BrewingPanel() {
         <PumpCard
           name="Pump 1"
           pumpState={states.pumps.P1}
-          onUpdate={(updates) => handlePumpUpdate('P1', updates)}
+          onUpdate={onUpdateP1}
         />
         <BrewTimer timerState={timerState} isProduction={isProduction} />
         <PumpCard
           name="Pump 2"
           pumpState={states.pumps.P2}
-          onUpdate={(updates) => handlePumpUpdate('P2', updates)}
+          onUpdate={onUpdateP2}
         />
       </div>
 

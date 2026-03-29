@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { getTemperatureColor, getTemperatureGradient } from '../../utils/temperatureColor';
 import { useTheme } from '../../contexts/ThemeContext';
 import { playToggleOn, playToggleOff } from '../../utils/sounds';
@@ -230,4 +230,4 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   );
 }
 
-export default PotCard;
+export default memo(PotCard);

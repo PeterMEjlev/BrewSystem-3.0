@@ -11,5 +11,21 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  build: {
+    // Split recharts into its own chunk — it's large and only used on the chart tab
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          recharts: ['recharts'],
+        },
+      },
+    },
+    // Inline small assets to reduce HTTP requests on RPi
+    assetsInlineLimit: 8192,
+    // Target modern Chromium (Electron) — smaller output, no polyfills
+    target: 'esnext',
+    // Reduce source map overhead in production
+    sourcemap: false,
+  },
 })
