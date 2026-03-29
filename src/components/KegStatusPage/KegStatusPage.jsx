@@ -422,12 +422,18 @@ function KegEditModal({ kegs, onClose, onSave }) {
   );
 }
 
+const KEG_COUNT_KEY = 'kegStatusLastCount';
+const DEFAULT_SKELETON_COUNT = 12;
+
 function KegStatusPage() {
   const [kegs, setKegs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sortKey, setSortKey] = useState('number');
   const [sortAsc, setSortAsc] = useState(true);
+
+  // Remember last known keg count so skeletons match the layout
+  const skeletonCount = parseInt(localStorage.getItem(KEG_COUNT_KEY) || DEFAULT_SKELETON_COUNT, 10) || DEFAULT_SKELETON_COUNT;
 
   // Single edit
   const [editingKeg, setEditingKeg] = useState(null);
@@ -461,6 +467,7 @@ function KegStatusPage() {
             abv: cols[6] || '',
           }))
           .filter((k) => k.number);
+        if (parsed.length > 0) localStorage.setItem(KEG_COUNT_KEY, parsed.length);
         setKegs(parsed);
       })
       .catch((err) => setError(err.message))
@@ -551,24 +558,6 @@ function KegStatusPage() {
     setEditingBulk(true);
   }, []);
 
-  if (loading) {
-    return (
-      <div className={styles.calculator}>
-        <h2 className={styles.calcTitle}>Keg Status</h2>
-        <p className={styles.calcSubtitle}>Loading keg data…</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={styles.calculator}>
-        <h2 className={styles.calcTitle}>Keg Status</h2>
-        <p className={styles.error}>{error}</p>
-      </div>
-    );
-  }
-
   const sorted = sortKegs(kegs, sortKey, sortAsc);
   const selectedKegs = kegs.filter((k) => selectedIds.has(k.number));
 
@@ -578,7 +567,11 @@ function KegStatusPage() {
         <div>
           <h2 className={styles.calcTitle}>Keg Status</h2>
           <p className={styles.calcSubtitle}>
-            {selectMode
+            {loading
+              ? 'Loading keg data…'
+              : error
+              ? <span className={styles.error}>{error}</span>
+              : selectMode
               ? `${selectedIds.size} keg${selectedIds.size !== 1 ? 's' : ''} selected — tap to toggle`
               : <>Current inventory — {kegs.filter((k) => !isUnknown(k.contents)).length} of {kegs.length} kegs filled</>
             }
@@ -597,6 +590,7 @@ function KegStatusPage() {
             key={key}
             className={`${styles.sortBtn} ${sortKey === key ? styles.sortActive : ''}`}
             onClick={() => { playClick(); handleSort(key); }}
+            disabled={loading}
           >
             {label}
             {sortKey === key && (
@@ -607,7 +601,17 @@ function KegStatusPage() {
       </div>
 
       <div className={styles.kegGrid}>
-        {sorted.map((keg) => {
+        {loading
+          ? Array.from({ length: skeletonCount }, (_, i) => (
+              <div key={i} className={`${styles.kegCard} ${styles.kegCardSkeleton}`}>
+                <div className={styles.kegHeader}>
+                  <span className={`${styles.kegNumber} ${styles.skeletonText}`}>#00</span>
+                  <span className={`${styles.kegVolume} ${styles.skeletonText}`}>19L</span>
+                </div>
+                <span className={`${styles.kegContents} ${styles.skeletonText}`}>???</span>
+              </div>
+            ))
+          : sorted.map((keg) => {
           const color = getContentColor(keg.contents);
           const unknown = isUnknown(keg.contents);
           const rgb = color ? hexToRgb(color) : null;
