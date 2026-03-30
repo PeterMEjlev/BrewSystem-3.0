@@ -4,14 +4,14 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  transition: box-shadow 0.3s ease;
   flex: 1;
   min-width: 280px;
   background: var(--color-bg-secondary);
+  border: 2px solid transparent;
 }
 
 .potCard.glowing {
-  border: 2px solid var(--glow-border-color, transparent);
+  border-color: var(--glow-border-color, transparent);
 }
 
 .mlt {

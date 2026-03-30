@@ -140,7 +140,8 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   const pvColor = getTemperatureColor(potState.pv);
   const svColor = getTemperatureColor(localSV);
   const glowIntensity = type !== 'MLT' && potState.heaterOn ? effectiveEfficiency / 100 : 0;
-  const wattsDrawn = type !== 'MLT' && potState.heaterOn ? Math.round((effectiveEfficiency / 100) * potMaxWatts) : 0;
+  const rawWatts = type !== 'MLT' && potState.heaterOn ? (effectiveEfficiency / 100) * potMaxWatts : 0;
+  const wattsDrawn = Math.round(rawWatts / 50) * 50;
   const isThrottled = type !== 'MLT' && potState.heaterOn && effectiveEfficiency < localEfficiency;
 
   // Quantize glow to 5% steps so the border style only changes 20 times, not 100
