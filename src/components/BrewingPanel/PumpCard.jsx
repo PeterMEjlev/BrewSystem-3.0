@@ -75,4 +75,10 @@ function PumpCard({ name, pumpState, onUpdate }) {
   );
 }
 
-export default memo(PumpCard);
+function pumpCardEqual(prev, next) {
+  if (prev.onUpdate !== next.onUpdate) return false;
+  const ps = prev.pumpState, ns = next.pumpState;
+  return ps.on === ns.on && ps.speed === ns.speed;
+}
+
+export default memo(PumpCard, pumpCardEqual);

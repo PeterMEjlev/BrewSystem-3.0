@@ -1,4 +1,4 @@
-import { useState, useEffect, memo, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import { getTemperatureColor } from '../../utils/temperatureColor';
 import { useTheme } from '../../contexts/ThemeContext';
 import { playToggleOn, playToggleOff } from '../../utils/sounds';
@@ -17,22 +17,6 @@ const DEFAULT_REG_CONFIG = {
 function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, effectiveEfficiency = 0, potMaxWatts = 0, efficiencyCap = 100, onUpdate }) {
   const [localSV, setLocalSV] = useState(potState.sv || 75);
   const [localEfficiency, setLocalEfficiency] = useState(potState.efficiency || 0);
-
-  // Refs for latest values — read in stable callbacks without triggering re-renders
-  const localEfficiencyRef = useRef(localEfficiency);
-  localEfficiencyRef.current = localEfficiency;
-  const localSVRef = useRef(localSV);
-  localSVRef.current = localSV;
-
-  // Track last value sent to parent to throttle updates to 5% boundaries
-  const lastSentEfficiency = useRef(Math.round((potState.efficiency || 0) / 5) * 5);
-  const lastSentSV = useRef(Math.round((potState.sv || 75) / 5) * 5);
-
-  // DOM refs for direct manipulation during slider drag (bypasses React diffing)
-  const effSliderRef = useRef(null);
-  const effLabelRef = useRef(null);
-  const svSliderRef = useRef(null);
-  const svLabelRef = useRef(null);
 
   useEffect(() => {
     if (potState.sv !== undefined) {
@@ -57,65 +41,27 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
     onUpdate({ regulationEnabled: !potState.regulationEnabled });
   };
 
-  // --- Temperature slider: DOM-direct during drag, React only at 5° boundaries ---
   const handleSetTempChange = (e) => {
     const value = parseFloat(e.target.value);
-    localSVRef.current = value;
-    // Update label + gradient directly — zero React re-renders
-    if (svLabelRef.current) svLabelRef.current.textContent = `${Math.round(value)}°`;
-    if (svSliderRef.current) {
-      svSliderRef.current.style.background = `linear-gradient(to right, var(--color-accent-blue) 0%, ${getTemperatureColor(value)} ${value}%, var(--color-border-light) ${value}%, var(--color-border-light) 100%)`;
-    }
-    const rounded = Math.round(value / 5) * 5;
-    if (rounded !== lastSentSV.current) {
-      lastSentSV.current = rounded;
-      setLocalSV(value);
-      onUpdate({ sv: value });
-    }
+    setLocalSV(value);
+    onUpdate({ sv: value });
   };
 
-  const handleSetTempRelease = useCallback(() => {
-    const value = localSVRef.current;
-    setLocalSV(value);
-    lastSentSV.current = Math.round(value / 5) * 5;
-    onUpdate({ sv: value });
-  }, [onUpdate]);
-
-  // --- Efficiency slider: DOM-direct during drag, React only at 5% boundaries ---
   const handleEfficiencyChange = (e) => {
     const value = Math.min(parseFloat(e.target.value), efficiencyCap);
-    localEfficiencyRef.current = value;
-    // Update label + gradient directly — zero React re-renders
-    if (effLabelRef.current) effLabelRef.current.textContent = `${Math.round(value)}%`;
-    if (effSliderRef.current) {
-      effSliderRef.current.style.background = `linear-gradient(to right, var(--color-gradient-warm-start) 0%, var(--color-gradient-warm-end) ${value}%, var(--color-border-light) ${value}%, var(--color-border-light) 100%)`;
-    }
-    const rounded = Math.round(value / 5) * 5;
-    if (rounded !== lastSentEfficiency.current) {
-      lastSentEfficiency.current = rounded;
-      setLocalEfficiency(value);
-      onUpdate({ efficiency: value });
-    }
-  };
-
-  const handleEfficiencyRelease = useCallback(() => {
-    const value = localEfficiencyRef.current;
     setLocalEfficiency(value);
-    lastSentEfficiency.current = Math.round(value / 5) * 5;
     onUpdate({ efficiency: value });
-  }, [onUpdate]);
+  };
 
   // Auto efficiency control when regulation and auto efficiency are enabled
   useEffect(() => {
     if (type !== 'MLT' && potState.regulationEnabled && regulationConfig.enabled) {
       const diff = localSV - potState.pv;
       if (diff <= 0) {
-        // At or above target – turn off heater
         if (potState.heaterOn) {
           onUpdate({ heaterOn: false });
         }
       } else {
-        // Below target – compute step power (capped by the power limit) and ensure heater is on
         const steps = regulationConfig.steps;
         let power = steps[steps.length - 1].power;
         for (const step of steps.slice(0, -1)) {
@@ -138,12 +84,10 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
     if (type !== 'MLT' && potState.regulationEnabled && !regulationConfig.enabled) {
       const diff = localSV - potState.pv;
       if (diff <= 0) {
-        // At or above target – turn off heater
         if (potState.heaterOn) {
           onUpdate({ heaterOn: false });
         }
       } else {
-        // Below target – ensure heater is on
         if (!potState.heaterOn) {
           onUpdate({ heaterOn: true, efficiency: localEfficiency });
         }
@@ -234,19 +178,17 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
             <div className={styles.control}>
               <label className={styles.controlLabel}>
                 Set Temperature
-                <span ref={svLabelRef} className={styles.controlValue} style={{ color: svColor }}>
+                <span className={styles.controlValue} style={{ color: svColor }}>
                   {localSV.toFixed(0)}°
                 </span>
               </label>
               <input
-                ref={svSliderRef}
                 type="range"
                 min="0"
                 max="100"
                 step="0.5"
                 value={localSV}
                 onChange={handleSetTempChange}
-                onPointerUp={handleSetTempRelease}
                 className={styles.slider}
                 style={{
                   background: `linear-gradient(to right,
@@ -262,17 +204,15 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
           <div className={styles.control}>
             <label className={styles.controlLabel}>
               Efficiency
-              <span ref={effLabelRef} className={styles.controlValue}>{localEfficiency.toFixed(0)}%</span>
+              <span className={styles.controlValue}>{localEfficiency.toFixed(0)}%</span>
             </label>
             <input
-              ref={effSliderRef}
               type="range"
               min="0"
               max="100"
               step="1"
               value={localEfficiency}
               onChange={handleEfficiencyChange}
-              onPointerUp={handleEfficiencyRelease}
               className={styles.slider}
               disabled={potState.regulationEnabled && regulationConfig.enabled}
               style={{
@@ -290,4 +230,19 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   );
 }
 
-export default memo(PotCard);
+// Custom comparator: compare potState fields by VALUE, not reference.
+// This prevents sibling PotCards from re-rendering when only one pot changed.
+function potCardEqual(prev, next) {
+  if (prev.effectiveEfficiency !== next.effectiveEfficiency) return false;
+  if (prev.efficiencyCap !== next.efficiencyCap) return false;
+  if (prev.onUpdate !== next.onUpdate) return false;
+  const ps = prev.potState, ns = next.potState;
+  if (ps.pv !== ns.pv) return false;
+  if (ps.sv !== ns.sv) return false;
+  if (ps.heaterOn !== ns.heaterOn) return false;
+  if (ps.regulationEnabled !== ns.regulationEnabled) return false;
+  if (ps.efficiency !== ns.efficiency) return false;
+  return true;
+}
+
+export default memo(PotCard, potCardEqual);
