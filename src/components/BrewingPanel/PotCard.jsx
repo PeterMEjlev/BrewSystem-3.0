@@ -115,11 +115,6 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   const wattsDrawn = type !== 'MLT' && potState.heaterOn ? Math.round((effectiveEfficiency / 100) * potMaxWatts) : 0;
   const isThrottled = type !== 'MLT' && potState.heaterOn && effectiveEfficiency < localEfficiency;
 
-  // DEBUG: compare glow implementation between devices
-  if (type !== 'MLT' && potState.heaterOn) {
-    console.log(`[GLOW DEBUG] ${name} | intensity: ${glowIntensity.toFixed(2)} | border-only (no box-shadow, no animation) | v2-simplified`);
-  }
-
   return (
     <div
       className={`${styles.potCard} ${type === 'MLT' ? styles.mlt : ''} ${glowIntensity > 0 ? styles.glowing : ''}`}
@@ -130,6 +125,12 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
         boxShadow: glowIntensity > 0 ? 'none' : 'var(--shadow-card)',
       }}
     >
+      {/* DEBUG: remove after testing */}
+      {type !== 'MLT' && (
+        <div style={{ background: 'red', color: 'white', padding: '4px 8px', fontSize: '12px', borderRadius: '4px' }}>
+          GLOW v2 | heater: {potState.heaterOn ? 'ON' : 'OFF'} | intensity: {glowIntensity.toFixed(2)}
+        </div>
+      )}
       <div className={styles.header}>
         <h3 className={styles.title}>{name}</h3>
         {type !== 'MLT' && (
