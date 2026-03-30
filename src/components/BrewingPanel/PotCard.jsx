@@ -119,9 +119,11 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
     <div
       className={`${styles.potCard} ${type === 'MLT' ? styles.mlt : ''} ${glowIntensity > 0 ? styles.glowing : ''}`}
       style={{
-        '--glow-opacity': glowIntensity > 0 ? 0.1 + glowIntensity * 0.8 : 0,
+        '--glow-border-color': glowIntensity > 0
+          ? `rgba(240, 76, 101, ${0.3 + glowIntensity * 0.7})`
+          : 'transparent',
         boxShadow: glowIntensity > 0
-          ? 'none'
+          ? `0 0 ${4 + glowIntensity * 12}px rgba(240, 76, 101, ${0.15 + glowIntensity * 0.35}), inset 0 0 ${2 + glowIntensity * 6}px rgba(245, 131, 97, ${0.05 + glowIntensity * 0.15})`
           : 'var(--shadow-card)',
       }}
     >
