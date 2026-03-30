@@ -12,6 +12,7 @@ npm run dev
 
 Open http://localhost:5173 in your browser. Hot reload is enabled.
 
+#Remember to rebuild!
 ## Kiosk Mode (PC - Electron Fullscreen)
 
 ```bash
