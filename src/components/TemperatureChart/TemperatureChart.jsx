@@ -109,7 +109,7 @@ function TemperatureChart() {
   const [windowMinutes, setWindowMinutes] = useState(WINDOW_MAX);
   const [zoomDomain, setZoomDomain] = useState(null); // { start, end } timestamps or null
   const [isPanning, setIsPanning] = useState(false);
-  const [maxChartPoints, setMaxChartPoints] = useState(200); // lowered from 500 for RPi performance
+  const [maxChartPoints, setMaxChartPoints] = useState(150); // kept low for RPi SVG performance
   const [tooltipState, setTooltipState] = useState(null); // { payload, label, x, y }
   const chartContainerRef = useRef(null);
   const panRef = useRef(null); // { startX, domainStart, domainEnd, chartWidth }
@@ -134,7 +134,7 @@ function TemperatureChart() {
   useEffect(() => {
     fetch('/api/settings')
       .then((r) => r.json())
-      .then((s) => setMaxChartPoints(s?.app?.max_chart_points ?? 200))
+      .then((s) => setMaxChartPoints(s?.app?.max_chart_points ?? 150))
       .catch(() => {});
   }, []);
 

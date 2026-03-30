@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { playToggleOn, playToggleOff } from '../../utils/sounds';
 import styles from './PumpCard.module.css';
@@ -75,4 +75,4 @@ function PumpCard({ name, pumpState, onUpdate }) {
   );
 }
 
-export default PumpCard;
+export default memo(PumpCard);

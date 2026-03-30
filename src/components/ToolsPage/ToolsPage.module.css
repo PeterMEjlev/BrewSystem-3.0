@@ -298,6 +298,27 @@
   opacity: 0.55;
 }
 
+/* Skeleton loading state — uses the real card elements so layout is identical */
+@keyframes kegSkeletonPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+.kegCardSkeleton {
+  animation: kegSkeletonPulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+  cursor: default;
+}
+
+.kegCardSkeleton:hover {
+  transform: none;
+  border-color: var(--color-border);
+}
+
+.skeletonText {
+  color: transparent !important;
+}
+
 .kegHeader {
   display: flex;
   justify-content: space-between;

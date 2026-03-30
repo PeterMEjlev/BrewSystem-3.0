@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import styles from './BrewTimer.module.css';
 
 const postTimer = async (action, seconds) => {
@@ -231,4 +231,4 @@ function BrewTimer({ timerState, isProduction }) {
   );
 }
 
-export default BrewTimer;
+export default memo(BrewTimer);

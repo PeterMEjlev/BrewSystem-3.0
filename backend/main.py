@@ -157,7 +157,7 @@ class AppSettings(BaseModel):
 
     log_interval_seconds: int = 10
     max_watts: int = 11000
-    max_chart_points: int = 500
+    max_chart_points: int = 150
     auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
 
 
@@ -170,11 +170,19 @@ class Settings(BaseModel):
     theme: Dict[str, str] = Field(default_factory=dict)
 
 
+_config_cache: Optional[Dict[str, Any]] = None
+
+
 def read_config() -> Dict[str, Any]:
-    """Read configuration from JSON file"""
+    """Read configuration, using an in-memory cache to avoid SD-card I/O on
+    every request.  The cache is invalidated on writes."""
+    global _config_cache
+    if _config_cache is not None:
+        return _config_cache
     try:
         with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+            _config_cache = json.load(f)
+            return _config_cache
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Config file not found")
     except json.JSONDecodeError:
@@ -182,7 +190,8 @@ def read_config() -> Dict[str, Any]:
 
 
 def write_config_atomic(data: Dict[str, Any]) -> None:
-    """Write configuration to JSON file atomically"""
+    """Write configuration to JSON file atomically and invalidate the cache"""
+    global _config_cache
     # Create a temporary file in the same directory as the config file
     config_dir = CONFIG_FILE.parent
 
@@ -198,6 +207,7 @@ def write_config_atomic(data: Dict[str, Any]) -> None:
 
     # Atomically replace the old config file with the new one
     os.replace(tmp_path, CONFIG_FILE)
+    _config_cache = data
 
 
 @app.get("/api/settings")
