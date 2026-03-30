@@ -122,9 +122,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
         '--glow-border-color': glowIntensity > 0
           ? `rgba(240, 76, 101, ${0.3 + glowIntensity * 0.7})`
           : 'transparent',
-        boxShadow: glowIntensity > 0
-          ? `0 0 ${4 + glowIntensity * 12}px rgba(240, 76, 101, ${0.15 + glowIntensity * 0.35}), inset 0 0 ${2 + glowIntensity * 6}px rgba(245, 131, 97, ${0.05 + glowIntensity * 0.15})`
-          : 'var(--shadow-card)',
+        boxShadow: glowIntensity > 0 ? 'none' : 'var(--shadow-card)',
       }}
     >
       <div className={styles.header}>
