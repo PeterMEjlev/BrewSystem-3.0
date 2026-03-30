@@ -126,6 +126,13 @@ function BrewingPanel() {
     };
   };
 
+  // Debounce timers for hardware API calls — prevents flooding the RPi backend
+  const apiTimers = useRef({});
+  const debouncedApi = useCallback((key, fn, delay = 80) => {
+    clearTimeout(apiTimers.current[key]);
+    apiTimers.current[key] = setTimeout(fn, delay);
+  }, []);
+
   const handlePotUpdate = useCallback((potName, updates) => {
     lastCommandTime.current = Date.now();
     const s = statesRef.current;
@@ -141,23 +148,32 @@ function BrewingPanel() {
     }
     if (updates.sv !== undefined) {
       brewSystem.setPotSetValue(potName, updates.sv);
-      if (isProduction) hardwareApi.setPotSv(potName, updates.sv);
+      if (isProduction) debouncedApi(`sv-${potName}`, () => hardwareApi.setPotSv(potName, updates.sv));
     }
+    // Compute yielding pot's clamped efficiency so we can batch it into one setState
+    let yieldPot = null;
+    let yieldEfficiency = null;
     if (updates.efficiency !== undefined) {
       brewSystem.setPotEfficiency(potName, updates.efficiency);
       // The pot whose efficiency the user just changed becomes the priority pot
       if (potName === 'BK' || potName === 'HLT') setPriorityPot(potName);
       if (isProduction) {
-        hardwareApi.setPotEfficiency(potName, updates.efficiency);
+        debouncedApi(`eff-${potName}`, () => hardwareApi.setPotEfficiency(potName, updates.efficiency));
         // Throttle the non-priority (yielding) pot to stay within the remaining headroom
         if (potName === 'BK' && s.pots.HLT.heaterOn) {
           const usedByBk = (s.pots.BK.heaterOn ? updates.efficiency : 0) / 100 * BK_MAX_WATTS;
           const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
-          hardwareApi.setPotEfficiency('HLT', Math.min(s.pots.HLT.efficiency, newHltCap));
+          const clamped = Math.min(s.pots.HLT.efficiency, newHltCap);
+          debouncedApi('eff-HLT', () => hardwareApi.setPotEfficiency('HLT', clamped));
+          yieldPot = 'HLT';
+          yieldEfficiency = clamped;
         } else if (potName === 'HLT' && s.pots.BK.heaterOn) {
           const usedByHlt = (s.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * HLT_MAX_WATTS;
           const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / BK_MAX_WATTS) * 100));
-          hardwareApi.setPotEfficiency('BK', Math.min(s.pots.BK.efficiency, newBkCap));
+          const clamped = Math.min(s.pots.BK.efficiency, newBkCap);
+          debouncedApi('eff-BK', () => hardwareApi.setPotEfficiency('BK', clamped));
+          yieldPot = 'BK';
+          yieldEfficiency = clamped;
         }
       }
     }
@@ -176,14 +192,22 @@ function BrewingPanel() {
       }
     }
     if (isProduction) {
-      setStates((prev) => ({
-        ...prev,
-        pots: { ...prev.pots, [potName]: { ...prev.pots[potName], ...updates } },
-      }));
+      // Batch both the dragged pot AND the yielding pot into one setState — prevents
+      // the yielding PotCard's clamp useEffect from triggering a second render cycle.
+      setStates((prev) => {
+        const next = {
+          ...prev,
+          pots: { ...prev.pots, [potName]: { ...prev.pots[potName], ...updates } },
+        };
+        if (yieldPot && yieldEfficiency !== null) {
+          next.pots = { ...next.pots, [yieldPot]: { ...next.pots[yieldPot], efficiency: yieldEfficiency } };
+        }
+        return next;
+      });
     } else {
       setStates(mergeWithRealPv);
     }
-  }, [isProduction]);
+  }, [isProduction, debouncedApi]);
 
   const handlePumpUpdate = useCallback((pumpName, updates) => {
     lastCommandTime.current = Date.now();
