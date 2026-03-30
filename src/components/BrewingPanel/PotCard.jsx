@@ -1,5 +1,5 @@
-import { useState, useEffect, memo } from 'react';
-import { getTemperatureColor, getTemperatureGradient } from '../../utils/temperatureColor';
+import { useState, useEffect, memo, useRef, useMemo, useCallback } from 'react';
+import { getTemperatureColor } from '../../utils/temperatureColor';
 import { useTheme } from '../../contexts/ThemeContext';
 import { playToggleOn, playToggleOff } from '../../utils/sounds';
 import styles from './PotCard.module.css';
@@ -17,6 +17,16 @@ const DEFAULT_REG_CONFIG = {
 function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, effectiveEfficiency = 0, potMaxWatts = 0, efficiencyCap = 100, onUpdate }) {
   const [localSV, setLocalSV] = useState(potState.sv || 75);
   const [localEfficiency, setLocalEfficiency] = useState(potState.efficiency || 0);
+
+  // Refs for reading latest local values in stable callbacks
+  const localEfficiencyRef = useRef(localEfficiency);
+  localEfficiencyRef.current = localEfficiency;
+  const localSVRef = useRef(localSV);
+  localSVRef.current = localSV;
+
+  // Track last value sent to parent to throttle updates to 5% boundaries
+  const lastSentEfficiency = useRef(Math.round((potState.efficiency || 0) / 5) * 5);
+  const lastSentSV = useRef(Math.round((potState.sv || 75) / 5) * 5);
 
   useEffect(() => {
     if (potState.sv !== undefined) {
@@ -45,14 +55,32 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   const handleSetTempChange = (e) => {
     const value = parseFloat(e.target.value);
     setLocalSV(value);
-    onUpdate({ sv: value });
+    const rounded = Math.round(value / 5) * 5;
+    if (rounded !== lastSentSV.current) {
+      lastSentSV.current = rounded;
+      onUpdate({ sv: value });
+    }
   };
+
+  const handleSetTempRelease = useCallback(() => {
+    lastSentSV.current = Math.round(localSVRef.current / 5) * 5;
+    onUpdate({ sv: localSVRef.current });
+  }, [onUpdate]);
 
   const handleEfficiencyChange = (e) => {
     const value = Math.min(parseFloat(e.target.value), efficiencyCap);
     setLocalEfficiency(value);
-    onUpdate({ efficiency: value });
+    const rounded = Math.round(value / 5) * 5;
+    if (rounded !== lastSentEfficiency.current) {
+      lastSentEfficiency.current = rounded;
+      onUpdate({ efficiency: value });
+    }
   };
+
+  const handleEfficiencyRelease = useCallback(() => {
+    lastSentEfficiency.current = Math.round(localEfficiencyRef.current / 5) * 5;
+    onUpdate({ efficiency: localEfficiencyRef.current });
+  }, [onUpdate]);
 
   // Auto efficiency control when regulation and auto efficiency are enabled
   useEffect(() => {
@@ -115,22 +143,20 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   const wattsDrawn = type !== 'MLT' && potState.heaterOn ? Math.round((effectiveEfficiency / 100) * potMaxWatts) : 0;
   const isThrottled = type !== 'MLT' && potState.heaterOn && effectiveEfficiency < localEfficiency;
 
+  // Quantize glow to 5% steps so the border style only changes 20 times, not 100
+  const quantizedGlow = glowIntensity > 0 ? Math.round(glowIntensity * 20) / 20 : 0;
+  const cardStyle = useMemo(() => ({
+    '--glow-border-color': quantizedGlow > 0
+      ? `rgba(240, 76, 101, ${0.3 + quantizedGlow * 0.7})`
+      : 'transparent',
+    boxShadow: quantizedGlow > 0 ? 'none' : 'var(--shadow-card)',
+  }), [quantizedGlow]);
+
   return (
     <div
-      className={`${styles.potCard} ${type === 'MLT' ? styles.mlt : ''} ${glowIntensity > 0 ? styles.glowing : ''}`}
-      style={{
-        '--glow-border-color': glowIntensity > 0
-          ? `rgba(240, 76, 101, ${0.3 + glowIntensity * 0.7})`
-          : 'transparent',
-        boxShadow: glowIntensity > 0 ? 'none' : 'var(--shadow-card)',
-      }}
+      className={`${styles.potCard} ${type === 'MLT' ? styles.mlt : ''} ${quantizedGlow > 0 ? styles.glowing : ''}`}
+      style={cardStyle}
     >
-      {/* DEBUG: remove after testing */}
-      {type !== 'MLT' && (
-        <div style={{ background: 'red', color: 'white', padding: '4px 8px', fontSize: '12px', borderRadius: '4px' }}>
-          GLOW v2 | heater: {potState.heaterOn ? 'ON' : 'OFF'} | intensity: {glowIntensity.toFixed(2)}
-        </div>
-      )}
       <div className={styles.header}>
         <h3 className={styles.title}>{name}</h3>
         {type !== 'MLT' && (
@@ -195,6 +221,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
                 step="0.5"
                 value={localSV}
                 onChange={handleSetTempChange}
+                onPointerUp={handleSetTempRelease}
                 className={styles.slider}
                 style={{
                   background: `linear-gradient(to right,
@@ -219,6 +246,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
               step="1"
               value={localEfficiency}
               onChange={handleEfficiencyChange}
+              onPointerUp={handleEfficiencyRelease}
               className={styles.slider}
               disabled={potState.regulationEnabled && regulationConfig.enabled}
               style={{

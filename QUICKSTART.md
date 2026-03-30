@@ -12,7 +12,9 @@ npm run dev
 
 Open http://localhost:5173 in your browser. Hot reload is enabled.
 
-#Remember to rebuild!
+#Remember to rebuild! if RPi causes trouble run this:
+#rm -rf ~/.config/brew-system-v3/
+
 ## Kiosk Mode (PC - Electron Fullscreen)
 
 ```bash
