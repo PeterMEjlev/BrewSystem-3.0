@@ -163,6 +163,34 @@
   width: 240px;
 }
 
+.selectInput {
+  background: var(--color-bg-primary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  width: 320px;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+}
+
+.selectInput:focus {
+  outline: none;
+  border-color: var(--color-accent-blue);
+  background: var(--color-bg-secondary);
+}
+
+.selectInput:hover {
+  border-color: var(--color-border-light);
+}
+
+.selectInput option {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
 /* Hardware sub-sections (collapsible) */
 .subSection {
   margin-bottom: 16px;

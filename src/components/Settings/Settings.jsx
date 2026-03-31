@@ -257,6 +257,7 @@ function Settings() {
       data.app = {
         max_watts: 11000,
         max_chart_points: 500,
+        cursor_visibility: 'auto',
         ...data.app,
       };
       setSettings(data);
@@ -297,6 +298,18 @@ function Settings() {
     current[keys[keys.length - 1]] = value;
     setSettings(newSettings);
     saveSettings(newSettings);
+
+    // Apply cursor visibility change immediately
+    if (path === 'app.cursor_visibility') {
+      if (value === 'show') {
+        document.body.style.cursor = '';
+      } else if (value === 'hide') {
+        document.body.style.cursor = 'none';
+      } else {
+        const isProduction = localStorage.getItem('brewSystemEnvironment') !== 'development';
+        document.body.style.cursor = isProduction ? 'none' : '';
+      }
+    }
   };
 
   const updateEfficiencyStep = (index, field, value) => {
@@ -456,6 +469,19 @@ function Settings() {
                 value={settings.app.max_chart_points}
                 onChange={(e) => updateSetting('app.max_chart_points', parseInt(e.target.value))}
               />
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label>Cursor Visibility:</label>
+              <select
+                value={settings.app.cursor_visibility || 'auto'}
+                onChange={(e) => updateSetting('app.cursor_visibility', e.target.value)}
+                className={styles.selectInput}
+              >
+                <option value="auto">Auto (hidden on Pi, visible on Windows)</option>
+                <option value="show">Always Show</option>
+                <option value="hide">Always Hide</option>
+              </select>
             </div>
 
             <div className={styles.subsectionTitle}>Auto Efficiency Control</div>

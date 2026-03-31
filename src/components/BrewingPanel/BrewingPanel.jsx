@@ -105,26 +105,23 @@ function BrewingPanel() {
           if (state.timer) setTimerState(state.timer);
         }
       } else {
-        setStates(brewSystem.getAllStates());
+        // Only sync simulated temperatures from the mock — control state
+        // (heaterOn, efficiency, etc.) is already kept in React state by the
+        // immutable updates in handlePotUpdate / handlePumpUpdate.
+        const mock = brewSystem.getAllStates();
+        setStates((prev) => ({
+          ...prev,
+          pots: {
+            BK:  { ...prev.pots.BK,  pv: mock.pots.BK.pv },
+            MLT: { ...prev.pots.MLT, pv: mock.pots.MLT.pv },
+            HLT: { ...prev.pots.HLT, pv: mock.pots.HLT.pv },
+          },
+        }));
       }
     }, 1500);
 
     return () => clearInterval(interval);
   }, [isProduction]);
-
-  // Merge mock control state with the current real pv values so sensor
-  // readings are never overwritten by the mock's simulated temperatures.
-  const mergeWithRealPv = (prev) => {
-    const mock = brewSystem.getAllStates();
-    return {
-      ...mock,
-      pots: {
-        BK:  { ...mock.pots.BK,  pv: prev.pots.BK.pv  },
-        MLT: { ...mock.pots.MLT, pv: prev.pots.MLT.pv },
-        HLT: { ...mock.pots.HLT, pv: prev.pots.HLT.pv },
-      },
-    };
-  };
 
   // Debounce timers for hardware API calls — prevents flooding the RPi backend
   const apiTimers = useRef({});
@@ -191,22 +188,18 @@ function BrewingPanel() {
         hardwareApi.setPotEfficiency('BK', Math.min(s.pots.BK.efficiency, newBkCap));
       }
     }
-    if (isProduction) {
-      // Batch both the dragged pot AND the yielding pot into one setState — prevents
-      // the yielding PotCard's clamp useEffect from triggering a second render cycle.
-      setStates((prev) => {
-        const next = {
-          ...prev,
-          pots: { ...prev.pots, [potName]: { ...prev.pots[potName], ...updates } },
-        };
-        if (yieldPot && yieldEfficiency !== null) {
-          next.pots = { ...next.pots, [yieldPot]: { ...next.pots[yieldPot], efficiency: yieldEfficiency } };
-        }
-        return next;
-      });
-    } else {
-      setStates(mergeWithRealPv);
-    }
+    // Apply updates immutably so React and memo comparators see the change.
+    // In production, also batch the yielding pot's clamped efficiency.
+    setStates((prev) => {
+      const next = {
+        ...prev,
+        pots: { ...prev.pots, [potName]: { ...prev.pots[potName], ...updates } },
+      };
+      if (isProduction && yieldPot && yieldEfficiency !== null) {
+        next.pots = { ...next.pots, [yieldPot]: { ...next.pots[yieldPot], efficiency: yieldEfficiency } };
+      }
+      return next;
+    });
   }, [isProduction, debouncedApi]);
 
   const handlePumpUpdate = useCallback((pumpName, updates) => {
@@ -219,14 +212,10 @@ function BrewingPanel() {
       brewSystem.setPumpSpeed(pumpName, updates.speed);
       if (isProduction) hardwareApi.setPumpSpeed(pumpName, updates.speed);
     }
-    if (isProduction) {
-      setStates((prev) => ({
-        ...prev,
-        pumps: { ...prev.pumps, [pumpName]: { ...prev.pumps[pumpName], ...updates } },
-      }));
-    } else {
-      setStates(mergeWithRealPv);
-    }
+    setStates((prev) => ({
+      ...prev,
+      pumps: { ...prev.pumps, [pumpName]: { ...prev.pumps[pumpName], ...updates } },
+    }));
   }, [isProduction]);
 
   // Derive effective (throttled) power and slider caps — priority pot gets its requested

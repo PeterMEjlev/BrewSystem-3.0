@@ -144,8 +144,15 @@ class MockBrewSystem {
 
   getAllStates() {
     return {
-      pots: { ...this.pots },
-      pumps: { ...this.pumps },
+      pots: {
+        BK: { ...this.pots.BK },
+        MLT: { ...this.pots.MLT },
+        HLT: { ...this.pots.HLT },
+      },
+      pumps: {
+        P1: { ...this.pumps.P1 },
+        P2: { ...this.pumps.P2 },
+      },
     };
   }
 }

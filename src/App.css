@@ -52,6 +52,11 @@ body {
   background: var(--color-text-dark);
 }
 
+/* Hide cursor globally when body has cursor:none (Pi kiosk mode) */
+body[style*="cursor: none"] * {
+  cursor: none !important;
+}
+
 /* Touch feedback improvements */
 button {
   -webkit-tap-highlight-color: transparent;

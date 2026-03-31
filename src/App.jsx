@@ -21,6 +21,27 @@ function App() {
     }
   }, []);
 
+  // Cursor visibility: hide on Pi (production), show on Windows (development),
+  // unless the user has explicitly overridden via settings.
+  useEffect(() => {
+    const applyCursor = (visibility) => {
+      if (visibility === 'show') {
+        document.body.style.cursor = '';
+      } else if (visibility === 'hide') {
+        document.body.style.cursor = 'none';
+      } else {
+        // "auto" — platform default
+        const isProduction = localStorage.getItem('brewSystemEnvironment') !== 'development';
+        document.body.style.cursor = isProduction ? 'none' : '';
+      }
+    };
+
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((s) => applyCursor(s?.app?.cursor_visibility || 'auto'))
+      .catch(() => applyCursor('auto'));
+  }, []);
+
   return (
     <ThemeProvider>
       <BruceHistoryProvider>
