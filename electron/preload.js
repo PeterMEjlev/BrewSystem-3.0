@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+contextBridge.exposeInMainWorld('platform', process.platform);
+
 contextBridge.exposeInMainWorld('bruceAPI', {
   onStateChange: (callback) => {
     const listener = (_event, state) => callback(state);

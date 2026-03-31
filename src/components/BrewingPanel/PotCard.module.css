@@ -7,11 +7,11 @@
   flex: 1;
   min-width: 300px;
   background: var(--color-bg-secondary);
-  border: 2px solid transparent;
 }
 
 .potCard.glowing {
-  border-color: var(--glow-border-color, transparent);
+  outline: 4px solid var(--glow-border-color, transparent);
+  outline-offset: -1px;
 }
 
 .mlt {

@@ -30,9 +30,9 @@ function App() {
       } else if (visibility === 'hide') {
         document.body.style.cursor = 'none';
       } else {
-        // "auto" — platform default
-        const isProduction = localStorage.getItem('brewSystemEnvironment') !== 'development';
-        document.body.style.cursor = isProduction ? 'none' : '';
+        // "auto" — hide on Linux (RPi), show on Windows/Mac
+        const isRPi = window.platform === 'linux';
+        document.body.style.cursor = isRPi ? 'none' : '';
       }
     };
 

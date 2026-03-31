@@ -33,7 +33,6 @@
     "log_interval_seconds": 5,
     "max_watts": 11000,
     "max_chart_points": 20,
-    "cursor_visibility": "auto",
     "auto_efficiency": {
       "enabled": true,
       "steps": [
@@ -54,7 +53,8 @@
           "power": 0.0
         }
       ]
-    }
+    },
+    "cursor_visibility": "auto"
   },
   "theme": {}
 }

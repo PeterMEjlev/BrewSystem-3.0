@@ -306,8 +306,8 @@ function Settings() {
       } else if (value === 'hide') {
         document.body.style.cursor = 'none';
       } else {
-        const isProduction = localStorage.getItem('brewSystemEnvironment') !== 'development';
-        document.body.style.cursor = isProduction ? 'none' : '';
+        const isRPi = window.platform === 'linux';
+        document.body.style.cursor = isRPi ? 'none' : '';
       }
     }
   };

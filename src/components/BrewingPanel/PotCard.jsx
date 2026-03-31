@@ -112,7 +112,7 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   const isThrottled = type !== 'MLT' && potState.heaterOn && effectiveEfficiency < localEfficiency;
 
   // Quantize glow to 5% steps so the border style only changes 20 times, not 100
-  const quantizedGlow = glowIntensity > 0 ? Math.round(glowIntensity * 20) / 20 : 0;
+  const quantizedGlow = glowIntensity > 0 ? Math.ceil(glowIntensity * 20) / 20 : 0;
   const cardStyle = useMemo(() => ({
     '--glow-border-color': quantizedGlow > 0
       ? `rgba(240, 76, 101, ${0.3 + quantizedGlow * 0.7})`
