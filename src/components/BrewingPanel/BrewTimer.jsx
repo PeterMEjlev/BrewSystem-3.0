@@ -42,12 +42,23 @@ function BrewTimer({ timerState, isProduction }) {
     setTarget(timerState.target ?? 0);
   }, [isProduction, timerState]);
 
-  // Local tick (dev mode)
+  // Local tick — keeps display updating every second in both dev and production.
+  // In production the backend poll (1.5s) corrects any drift.
   useEffect(() => {
-    if (isProduction) return;
     if (isRunning) {
       intervalRef.current = setInterval(() => {
-        setElapsed((e) => e + 1);
+        if (isProduction) {
+          // Locally tick the display so it updates every second between polls
+          setDisplaySeconds((prev) => {
+            if (target > 0) {
+              const next = prev - 1;
+              return next >= 0 ? next : 0;
+            }
+            return prev + 1;
+          });
+        } else {
+          setElapsed((e) => e + 1);
+        }
       }, 1000);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -55,7 +66,7 @@ function BrewTimer({ timerState, isProduction }) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isRunning, isProduction]);
+  }, [isRunning, isProduction, target]);
 
   // Update display from elapsed (dev mode)
   useEffect(() => {
