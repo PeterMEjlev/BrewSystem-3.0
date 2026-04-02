@@ -301,13 +301,10 @@ function Settings() {
 
     // Apply cursor visibility change immediately
     if (path === 'app.cursor_visibility') {
-      if (value === 'show') {
-        document.body.style.cursor = '';
-      } else if (value === 'hide') {
-        document.body.style.cursor = 'none';
+      if (value === 'hide' || (value === 'auto' && window.platform === 'linux')) {
+        document.body.classList.add('hide-cursor');
       } else {
-        const isRPi = window.platform === 'linux';
-        document.body.style.cursor = isRPi ? 'none' : '';
+        document.body.classList.remove('hide-cursor');
       }
     }
   };

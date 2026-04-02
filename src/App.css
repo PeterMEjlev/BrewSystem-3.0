@@ -52,8 +52,13 @@ body {
   background: var(--color-text-dark);
 }
 
-/* Hide cursor globally when body has cursor:none (Pi kiosk mode) */
-body[style*="cursor: none"] * {
+/* Hide cursor globally in Pi kiosk mode */
+body.hide-cursor,
+body.hide-cursor *,
+body.hide-cursor *::before,
+body.hide-cursor *::after,
+body.hide-cursor *::-webkit-slider-thumb,
+body.hide-cursor *::-webkit-slider-runnable-track {
   cursor: none !important;
 }
 

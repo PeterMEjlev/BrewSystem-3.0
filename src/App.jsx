@@ -25,14 +25,10 @@ function App() {
   // unless the user has explicitly overridden via settings.
   useEffect(() => {
     const applyCursor = (visibility) => {
-      if (visibility === 'show') {
-        document.body.style.cursor = '';
-      } else if (visibility === 'hide') {
-        document.body.style.cursor = 'none';
+      if (visibility === 'hide' || (visibility === 'auto' && window.platform === 'linux')) {
+        document.body.classList.add('hide-cursor');
       } else {
-        // "auto" — hide on Linux (RPi), show on Windows/Mac
-        const isRPi = window.platform === 'linux';
-        document.body.style.cursor = isRPi ? 'none' : '';
+        document.body.classList.remove('hide-cursor');
       }
     };
 
