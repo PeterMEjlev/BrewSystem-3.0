@@ -52,14 +52,19 @@ body {
   background: var(--color-text-dark);
 }
 
-/* Hide cursor globally in Pi kiosk mode */
+/* Hide cursor globally in Pi kiosk mode.
+   Uses a transparent 1x1 cursor image to override even native drag cursors. */
 body.hide-cursor,
-body.hide-cursor *,
-body.hide-cursor *::before,
-body.hide-cursor *::after,
-body.hide-cursor *::-webkit-slider-thumb,
+body.hide-cursor * {
+  cursor: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=') 0 0, none !important;
+}
+/* Separate rules for pseudo-elements (grouping with standard selectors can
+   cause the whole rule to be dropped in some engines) */
+body.hide-cursor *::-webkit-slider-thumb {
+  cursor: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=') 0 0, none !important;
+}
 body.hide-cursor *::-webkit-slider-runnable-track {
-  cursor: none !important;
+  cursor: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=') 0 0, none !important;
 }
 
 /* Touch feedback improvements */
