@@ -26,3 +26,6 @@ backend/session_logs/
 *.njsproj
 *.sln
 *.sw?
+
+__pychache__/
+*.pyc
