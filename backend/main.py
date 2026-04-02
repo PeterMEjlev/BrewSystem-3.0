@@ -337,21 +337,36 @@ async def set_pot_efficiency(pot: str, body: PotEfficiencyRequest) -> Dict[str, 
     pot_max = _BK_MAX_WATTS if pot == "BK" else _HLT_MAX_WATTS
     other_max = _HLT_MAX_WATTS if pot == "BK" else _BK_MAX_WATTS
 
-    # Apply the requested efficiency to this pot
-    _, pwm_pin, _ = _pot_pin_map(pot, config)
-    _control_state["pots"][pot]["efficiency"] = body.value
-    utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)
+    # When both REGs are on, BK has priority — HLT must yield.
+    both_regs = (
+        _control_state["pots"]["BK"]["regulationEnabled"]
+        and _control_state["pots"]["HLT"]["regulationEnabled"]
+    )
 
-    # Throttle the other pot if both heaters are on and total power exceeds the limit
-    if _control_state["pots"][other]["heaterOn"]:
-        used_by_this = (body.value / 100) * pot_max if _control_state["pots"][pot]["heaterOn"] else 0
-        headroom = max_watts - used_by_this
-        other_cap = max(0, min(100, (headroom / other_max) * 100))
-        other_eff = _control_state["pots"][other]["efficiency"]
-        if other_eff > other_cap:
-            _, other_pwm, _ = _pot_pin_map(other, config)
-            _control_state["pots"][other]["efficiency"] = other_cap
-            utils_rpi.change_pwm_duty_cycle(other_pwm, other_cap)
+    _, pwm_pin, _ = _pot_pin_map(pot, config)
+
+    if both_regs and pot == "HLT":
+        # BK has priority: cap HLT to fit within remaining headroom after BK
+        bk_used = (_control_state["pots"]["BK"]["efficiency"] / 100) * _BK_MAX_WATTS
+        hlt_cap = max(0, min(100, ((max_watts - bk_used) / _HLT_MAX_WATTS) * 100))
+        capped = min(body.value, hlt_cap)
+        _control_state["pots"]["HLT"]["efficiency"] = capped
+        utils_rpi.change_pwm_duty_cycle(pwm_pin, capped)
+    else:
+        # Apply the requested efficiency to this pot
+        _control_state["pots"][pot]["efficiency"] = body.value
+        utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)
+
+        # Throttle the other pot if both heaters are on and total power exceeds the limit
+        if _control_state["pots"][other]["heaterOn"]:
+            used_by_this = (body.value / 100) * pot_max if _control_state["pots"][pot]["heaterOn"] else 0
+            headroom = max_watts - used_by_this
+            other_cap = max(0, min(100, (headroom / other_max) * 100))
+            other_eff = _control_state["pots"][other]["efficiency"]
+            if other_eff > other_cap:
+                _, other_pwm, _ = _pot_pin_map(other, config)
+                _control_state["pots"][other]["efficiency"] = other_cap
+                utils_rpi.change_pwm_duty_cycle(other_pwm, other_cap)
 
     return {"status": "ok"}
 

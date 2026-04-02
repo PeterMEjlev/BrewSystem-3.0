@@ -150,13 +150,18 @@ function BrewingPanel() {
     // Compute yielding pot's clamped efficiency so we can batch it into one setState
     let yieldPot = null;
     let yieldEfficiency = null;
+    const bothRegsOn = s.pots.BK.regulationEnabled && s.pots.HLT.regulationEnabled;
     if (updates.efficiency !== undefined) {
       brewSystem.setPotEfficiency(potName, updates.efficiency);
-      // The pot whose efficiency the user just changed becomes the priority pot
-      if (potName === 'BK' || potName === 'HLT') setPriorityPot(potName);
+      // The pot whose efficiency the user just changed becomes the priority pot,
+      // BUT when both REGs are on BK always keeps priority so they don't compete.
+      if (potName === 'BK' || potName === 'HLT') {
+        if (!bothRegsOn || potName === 'BK') setPriorityPot(potName);
+      }
       if (isProduction) {
         debouncedApi(`eff-${potName}`, () => hardwareApi.setPotEfficiency(potName, updates.efficiency));
-        // Throttle the non-priority (yielding) pot to stay within the remaining headroom
+        // Throttle the non-priority (yielding) pot to stay within the remaining headroom.
+        // When both REGs are on, BK always has priority — HLT always yields.
         if (potName === 'BK' && s.pots.HLT.heaterOn) {
           const usedByBk = (s.pots.BK.heaterOn ? updates.efficiency : 0) / 100 * BK_MAX_WATTS;
           const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
@@ -165,12 +170,22 @@ function BrewingPanel() {
           yieldPot = 'HLT';
           yieldEfficiency = clamped;
         } else if (potName === 'HLT' && s.pots.BK.heaterOn) {
-          const usedByHlt = (s.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * HLT_MAX_WATTS;
-          const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / BK_MAX_WATTS) * 100));
-          const clamped = Math.min(s.pots.BK.efficiency, newBkCap);
-          debouncedApi('eff-BK', () => hardwareApi.setPotEfficiency('BK', clamped));
-          yieldPot = 'BK';
-          yieldEfficiency = clamped;
+          if (bothRegsOn) {
+            // BK has priority: cap HLT based on BK's current usage
+            const usedByBk = s.pots.BK.efficiency / 100 * BK_MAX_WATTS;
+            const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
+            const clamped = Math.min(updates.efficiency, newHltCap);
+            debouncedApi(`eff-${potName}`, () => hardwareApi.setPotEfficiency('HLT', clamped));
+            // Update the efficiency we're applying to be the clamped value
+            updates = { ...updates, efficiency: clamped };
+          } else {
+            const usedByHlt = (s.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * HLT_MAX_WATTS;
+            const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / BK_MAX_WATTS) * 100));
+            const clamped = Math.min(s.pots.BK.efficiency, newBkCap);
+            debouncedApi('eff-BK', () => hardwareApi.setPotEfficiency('BK', clamped));
+            yieldPot = 'BK';
+            yieldEfficiency = clamped;
+          }
         }
       }
     }
@@ -220,8 +235,11 @@ function BrewingPanel() {
 
   // Derive effective (throttled) power and slider caps — priority pot gets its requested
   // efficiency; the other pot yields to fit within the remaining headroom.
+  // When both REGs are on, BK always has priority so HLT yields.
+  const bothRegsOn = states.pots.BK.regulationEnabled && states.pots.HLT.regulationEnabled;
+  const effectivePriority = bothRegsOn ? 'BK' : priorityPot;
   let bkCap, hltCap, bkEffective, hltEffective, bkWatts, hltWatts;
-  if (priorityPot === 'HLT') {
+  if (effectivePriority === 'HLT') {
     hltCap      = Math.floor(Math.min(100, (maxWatts / HLT_MAX_WATTS) * 100));
     hltEffective = states.pots.HLT.heaterOn ? states.pots.HLT.efficiency : 0;
     hltWatts    = Math.round((hltEffective / 100) * HLT_MAX_WATTS);

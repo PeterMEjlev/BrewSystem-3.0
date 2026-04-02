@@ -40,6 +40,9 @@ python backend/main.py
 npm run electron:start
 ```
 
+## Remote view
+http://10.66.52.129:8000/
+
 For auto-start on boot, see the [Kiosk Setup](#kiosk-setup-on-raspberry-pi-one-time) section below.
 
 ---
