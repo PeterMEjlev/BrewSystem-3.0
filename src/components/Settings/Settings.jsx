@@ -974,6 +974,19 @@ function Settings() {
               <p>Web-based brewery control system</p>
               <p>Designed for Raspberry Pi kiosk mode</p>
             </div>
+            {window.electronAPI && (
+              <button
+                className={styles.exitBtn}
+                onClick={() => {
+                  playClick();
+                  if (window.confirm('Exit the Brew System app?')) {
+                    window.electronAPI.quit();
+                  }
+                }}
+              >
+                Exit App
+              </button>
+            )}
           </div>
         )}
       </div>

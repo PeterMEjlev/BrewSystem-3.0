@@ -95,6 +95,11 @@ function waitForBackend(url, retries = 30, delay = 1000) {
   });
 }
 
+// IPC handler: frontend requests app quit
+ipcMain.on('quit-app', () => {
+  app.quit();
+});
+
 // IPC handler: frontend requests Bruce to speak
 ipcMain.on('bruce-speak', (_event, message) => {
   if (bruceProcess && !bruceProcess.killed && bruceProcess.stdin.writable) {

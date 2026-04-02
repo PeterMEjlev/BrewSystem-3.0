@@ -159,10 +159,10 @@ sudo systemctl start brew-system.service
 
 ### 6. Set Up Kiosk Mode (Electron)
 
-Install unclutter to hide the mouse cursor:
+Install unclutter-xfixes to hide the mouse cursor (works during slider drag):
 
 ```bash
-sudo apt-get install unclutter
+sudo apt-get install unclutter-xfixes
 ```
 
 Electron is installed as a project dependency. Create autostart script (`~/.config/lxsession/LXDE-pi/autostart`):
@@ -171,7 +171,7 @@ Electron is installed as a project dependency. Create autostart script (`~/.conf
 @xset s off
 @xset -dpms
 @xset s noblank
-@unclutter -idle 0.1 -root
+@unclutter --start-hidden --hide-on-touch
 @/home/pi/brew-system-v3/node_modules/.bin/electron /home/pi/brew-system-v3
 ```
 

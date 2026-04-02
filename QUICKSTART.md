@@ -139,9 +139,9 @@ The app uses an Electron wrapper for fullscreen kiosk mode.
 ### Kiosk Setup on Raspberry Pi (One-time)
 
 ```bash
-# Install unclutter to hide mouse cursor
+# Install unclutter-xfixes to hide mouse cursor (works during slider drag)
 sudo apt-get update
-sudo apt-get install unclutter
+sudo apt-get install unclutter-xfixes
 
 # Create autostart file
 mkdir -p ~/.config/lxsession/LXDE-pi
@@ -154,7 +154,7 @@ Add these lines:
 @xset s off
 @xset -dpms
 @xset s noblank
-@unclutter -idle 0.1 -root
+@unclutter --start-hidden --hide-on-touch
 @/home/pi/brew-system-v3/node_modules/.bin/electron /home/pi/brew-system-v3
 ```
 

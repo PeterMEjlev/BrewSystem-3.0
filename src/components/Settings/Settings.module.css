@@ -402,6 +402,30 @@
   transform: scale(0.98);
 }
 
+/* Exit app button */
+.exitBtn {
+  margin-top: 24px;
+  padding: 10px 20px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  background: transparent;
+  border: 2px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  width: 100%;
+}
+
+.exitBtn:hover {
+  border-color: #e53e3e;
+  color: #e53e3e;
+}
+
+.exitBtn:active {
+  transform: scale(0.98);
+}
+
 /* Reset all button (sidebar footer) */
 .resetAllBtn {
   display: flex;
