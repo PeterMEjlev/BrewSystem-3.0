@@ -13,7 +13,13 @@ function PumpCard({ name, pumpState, onUpdate }) {
 
   const handleTogglePower = () => {
     pumpState.on ? playToggleOff() : playToggleOn();
-    onUpdate({ on: !pumpState.on });
+    const turningOn = !pumpState.on;
+    const updates = { on: turningOn };
+    if (turningOn && (pumpState.speed || 0) === 0) {
+      updates.speed = 50;
+      setLocalSpeed(50);
+    }
+    onUpdate(updates);
   };
 
   const handleSpeedChange = (e) => {

@@ -10,17 +10,4 @@ When a pump is turned on / has its speed changed, instead of going straight to t
 ## Temperature Chart Current Temp
 Add current temp for all sensors in the temperature graph for a quick overview. Have them colour coded according to the sensor. 
 
-## Brew Timer Input
-Allow clicking anywhere on the brew timer to start / stop it. Currently you have to click around the timer numbers themselves (they wont trigger start/stop). 
-
-Divide the timer card into 3 equally sized regions: 
-
-The behaviour of the timer has to be like this:
-
-- Cliking anywhere inside the brew timer card: Start / Stop
-- Dragging anywhere withing the first third (1/3) of the card (where the hour number is): Increase hours
-- Dragging anywhere withing the middle (2/3) of the card (where the minutes number is): Increase minutes
-- Dragging anywhere withing the last third (3/3) of the card (where the seconds number is): Increase seconds
-- Holding anywhere inside the brew timer card: Reset
-
-Remove the feature where dragging seconds down under 0 increases minutes (vice versa for minutes into hours)
+## Increase size of MLT sensor even more!
