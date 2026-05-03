@@ -9,9 +9,13 @@
   box-shadow: var(--shadow-card);
   cursor: pointer;
   user-select: none;
-  touch-action: manipulation;
+  touch-action: none;
   transition: var(--transition-fast);
   border: 2px solid transparent;
+}
+
+.brewTimer.adjustable {
+  cursor: ns-resize;
 }
 
 
@@ -80,11 +84,6 @@
   padding: 10px 8px;
   border-radius: var(--radius-md);
   transition: var(--transition-fast);
-  touch-action: none;
-}
-
-.segment.scrollable {
-  cursor: ns-resize;
 }
 
 .colon {
