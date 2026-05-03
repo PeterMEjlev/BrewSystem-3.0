@@ -1,6 +1,3 @@
-## Target Temp Slider Increments
-Change Set temp slider so it doesnt have 0.5 degree increments (1 is enough)
-
 ## Default Pump Speed
 When pump is turned on and it is a 0% speed - set it to 50% (so the user doesnt have to both turn it on and increase the speed)
 
