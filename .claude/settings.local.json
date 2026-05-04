@@ -11,7 +11,10 @@
       "Bash(npm run:*)",
       "WebFetch(domain:docs.brewersfriend.com)",
       "Bash(curl -s -H \"X-API-Key: 5a2c07e701f38d2c83ff2289df53f598c927129f\" \"https://api.brewersfriend.com/v1/recipes?id=1624184&ingredients=true\")",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(git stash *)",
+      "Bash(npx eslint *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('backend/main.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }

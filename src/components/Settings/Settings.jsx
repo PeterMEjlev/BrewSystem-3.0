@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { playClick, getVolumes, setMasterVolume, setButtonVolume, setBruceVolume } from '../../utils/sounds';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './Settings.module.css';
@@ -227,9 +228,7 @@ function Settings() {
     }
   }, []);
 
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState('');
+  const { settings, loading, saveStatus, updateSettings, resetSettings } = useSettings();
   const [isDevelopment, setIsDevelopment] = useState(false);
   const [expandedSections, setExpandedSections] = useState({
     potControl: true,
@@ -245,83 +244,36 @@ function Settings() {
     setIsDevelopment(savedEnvironment === 'development');
   }, []);
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
-    try {
-      const response = await fetch('/api/settings');
-      if (!response.ok) throw new Error('Failed to fetch settings');
-      const data = await response.json();
-      data.app = {
-        max_watts: 11000,
-        max_chart_points: 500,
-        cursor_visibility: 'auto',
-        ...data.app,
-      };
-      setSettings(data);
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-      setSaveStatus('Error loading settings');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveSettings = async (updatedSettings) => {
-    try {
-      setSaveStatus('Saving...');
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSettings),
-      });
-      if (!response.ok) throw new Error('Failed to save settings');
-      setSaveStatus('Saved ✓');
-      setTimeout(() => setSaveStatus(''), 2000);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      setSaveStatus('Error saving');
-      setTimeout(() => setSaveStatus(''), 3000);
-    }
-  };
-
   const updateSetting = (path, value) => {
     if (typeof value === 'number' && isNaN(value)) return;
-    const newSettings = JSON.parse(JSON.stringify(settings));
-    const keys = path.split('.');
-    let current = newSettings;
-    for (let i = 0; i < keys.length - 1; i++) {
-      current = current[keys[i]];
-    }
-    current[keys[keys.length - 1]] = value;
-    setSettings(newSettings);
-    saveSettings(newSettings);
-
-    // Apply cursor visibility change immediately
-    if (path === 'app.cursor_visibility') {
-      if (value === 'hide' || (value === 'auto' && window.platform === 'linux')) {
-        document.body.classList.add('hide-cursor');
-      } else {
-        document.body.classList.remove('hide-cursor');
+    updateSettings((prev) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      const keys = path.split('.');
+      let current = next;
+      for (let i = 0; i < keys.length - 1; i++) {
+        current = current[keys[i]];
       }
-    }
+      current[keys[keys.length - 1]] = value;
+      return next;
+    });
   };
 
-  const updateEfficiencyStep = (index, field, value) => {
-    const newSteps = settings.app.auto_efficiency.steps.map((s, i) =>
-      i === index ? { ...s, [field]: value } : s
-    );
-    const newSettings = {
-      ...settings,
-      app: {
-        ...settings.app,
-        auto_efficiency: { ...settings.app.auto_efficiency, steps: newSteps },
-      },
-    };
-    setSettings(newSettings);
-    saveSettings(newSettings);
+  const updateEfficiencyStep = (potKey, index, field, value) => {
+    updateSettings((prev) => {
+      const newSteps = prev.app.auto_efficiency[potKey].steps.map((s, i) =>
+        i === index ? { ...s, [field]: value } : s
+      );
+      return {
+        ...prev,
+        app: {
+          ...prev.app,
+          auto_efficiency: {
+            ...prev.app.auto_efficiency,
+            [potKey]: { ...prev.app.auto_efficiency[potKey], steps: newSteps },
+          },
+        },
+      };
+    });
   };
 
   const toggleSection = (section) => {
@@ -330,36 +282,24 @@ function Settings() {
 
   const updateColor = (colorKey, value) => {
     updateTheme(colorKey, value);
-    const newSettings = {
-      ...settings,
-      theme: { ...settings.theme, [colorKey]: value },
-    };
-    setSettings(newSettings);
-    saveSettings(newSettings);
+    updateSettings((prev) => ({
+      ...prev,
+      theme: { ...prev.theme, [colorKey]: value },
+    }));
   };
 
   const handleResetColors = () => {
     resetTheme();
-    const newSettings = { ...settings, theme: {} };
-    setSettings(newSettings);
-    saveSettings(newSettings);
+    updateSettings((prev) => ({ ...prev, theme: {} }));
   };
 
   const handleResetAllSettings = async () => {
     if (!window.confirm('Reset all settings to defaults? This cannot be undone.')) return;
     try {
-      setSaveStatus('Resetting...');
-      const response = await fetch('/api/settings/reset', { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to reset settings');
-      const data = await response.json();
-      setSettings(data);
+      await resetSettings();
       resetTheme();
-      setSaveStatus('Reset to defaults ✓');
-      setTimeout(() => setSaveStatus(''), 2000);
-    } catch (error) {
-      console.error('Error resetting settings:', error);
-      setSaveStatus('Error resetting');
-      setTimeout(() => setSaveStatus(''), 3000);
+    } catch {
+      // status already surfaced via context
     }
   };
 
@@ -387,7 +327,61 @@ function Settings() {
     );
   }
 
-  const steps = settings.app.auto_efficiency.steps;
+  const bkSteps = settings.app.auto_efficiency.bk?.steps ?? [];
+  const hltSteps = settings.app.auto_efficiency.hlt?.steps ?? [];
+
+  const renderThresholdTable = (label, potKey, steps) => (
+    <div className={styles.thresholdColumn}>
+      <div className={styles.thresholdColumnTitle}>{label}</div>
+      <div className={styles.thresholdTable}>
+        <div className={styles.thresholdHeader}>
+          <span>Condition</span>
+          <span>Power</span>
+        </div>
+        {steps.slice(0, -1).map((step, i) => (
+          <div key={i} className={styles.thresholdRow}>
+            <span className={styles.thresholdLabel}>diff &gt;</span>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={step.threshold}
+              onChange={(e) => updateEfficiencyStep(potKey, i, 'threshold', parseFloat(e.target.value))}
+              className={styles.thresholdInput}
+            />
+            <span className={styles.thresholdLabel}>°C</span>
+            <span className={styles.thresholdArrow}>→</span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={step.power}
+              onChange={(e) => updateEfficiencyStep(potKey, i, 'power', parseFloat(e.target.value))}
+              className={styles.thresholdInput}
+            />
+            <span className={styles.thresholdLabel}>%</span>
+          </div>
+        ))}
+        {steps.length > 0 && (
+          <div className={styles.thresholdRow}>
+            <span className={`${styles.thresholdLabel} ${styles.thresholdElse}`}>else</span>
+            <span className={styles.thresholdArrow}>→</span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={steps[steps.length - 1].power}
+              onChange={(e) => updateEfficiencyStep(potKey, steps.length - 1, 'power', parseFloat(e.target.value))}
+              className={styles.thresholdInput}
+            />
+            <span className={styles.thresholdLabel}>%</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   const resetButton = (
     <button className={styles.resetAllBtn} onClick={() => { playClick(); handleResetAllSettings(); }}>
@@ -500,50 +494,9 @@ function Settings() {
             </div>
 
             {settings.app.auto_efficiency.enabled && (
-              <div className={styles.thresholdTable}>
-                <div className={styles.thresholdHeader}>
-                  <span>Condition</span>
-                  <span>Power</span>
-                </div>
-                {steps.slice(0, -1).map((step, i) => (
-                  <div key={i} className={styles.thresholdRow}>
-                    <span className={styles.thresholdLabel}>diff &gt;</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={step.threshold}
-                      onChange={(e) => updateEfficiencyStep(i, 'threshold', parseFloat(e.target.value))}
-                      className={styles.thresholdInput}
-                    />
-                    <span className={styles.thresholdLabel}>°C</span>
-                    <span className={styles.thresholdArrow}>→</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={step.power}
-                      onChange={(e) => updateEfficiencyStep(i, 'power', parseFloat(e.target.value))}
-                      className={styles.thresholdInput}
-                    />
-                    <span className={styles.thresholdLabel}>%</span>
-                  </div>
-                ))}
-                <div className={styles.thresholdRow}>
-                  <span className={`${styles.thresholdLabel} ${styles.thresholdElse}`}>else</span>
-                  <span className={styles.thresholdArrow}>→</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={steps[steps.length - 1].power}
-                    onChange={(e) => updateEfficiencyStep(steps.length - 1, 'power', parseFloat(e.target.value))}
-                    className={styles.thresholdInput}
-                  />
-                  <span className={styles.thresholdLabel}>%</span>
-                </div>
+              <div className={styles.thresholdGrid}>
+                {renderThresholdTable('BK (8.5 kW)', 'bk', bkSteps)}
+                {renderThresholdTable('HLT (5.5 kW)', 'hlt', hltSteps)}
               </div>
             )}
           </div>

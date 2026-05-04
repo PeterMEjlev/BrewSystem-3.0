@@ -111,7 +111,7 @@
 
 /* Section content */
 .sectionContent {
-  max-width: 700px;
+  max-width: 900px;
 }
 
 /* Input rows */
@@ -247,6 +247,27 @@
 
 .subsectionTitle:first-child {
   margin-top: 0;
+}
+
+/* Auto-efficiency: two columns (BK + HLT) side by side */
+.thresholdGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.thresholdColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thresholdColumnTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.03em;
 }
 
 /* Auto-efficiency threshold table */

@@ -1,31 +1,33 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
 import { setPumpRampTarget, setPumpRampPower } from '../../utils/pumpRamp';
+import { useSettings, FALLBACK_AUTO_EFFICIENCY } from '../../contexts/SettingsContext';
 import PotCard from './PotCard';
 import PumpCard from './PumpCard';
 import BrewTimer from './BrewTimer';
 import styles from './BrewingPanel.module.css';
 
-const DEFAULT_REG_CONFIG = {
-  enabled: true,
-  steps: [
-    { threshold: 5,   power: 100 },
-    { threshold: 2,   power: 60  },
-    { threshold: 0.5, power: 30  },
-    { threshold: 0,   power: 0   },
-  ],
-};
-
 const BK_MAX_WATTS = 8500;
 const HLT_MAX_WATTS = 5000;
 
 function BrewingPanel() {
+  const { settings } = useSettings();
   const [states, setStates] = useState(brewSystem.getAllStates());
   const [timerState, setTimerState] = useState({ running: false, seconds: 0, target: 0 });
-  const [regulationConfig, setRegulationConfig] = useState(DEFAULT_REG_CONFIG);
-  const [maxWatts, setMaxWatts] = useState(11000);
   const [priorityPot, setPriorityPot] = useState('BK');
+
+  const autoEfficiency = settings?.app?.auto_efficiency ?? FALLBACK_AUTO_EFFICIENCY;
+  const maxWatts = settings?.app?.max_watts ?? 11000;
+  // Per-pot regulation configs — each pot's effect deps will only fire when its own steps change.
+  const bkRegConfig = useMemo(
+    () => ({ enabled: autoEfficiency.enabled, steps: autoEfficiency.bk?.steps ?? FALLBACK_AUTO_EFFICIENCY.bk.steps }),
+    [autoEfficiency.enabled, autoEfficiency.bk]
+  );
+  const hltRegConfig = useMemo(
+    () => ({ enabled: autoEfficiency.enabled, steps: autoEfficiency.hlt?.steps ?? FALLBACK_AUTO_EFFICIENCY.hlt.steps }),
+    [autoEfficiency.enabled, autoEfficiency.hlt]
+  );
 
   // Read environment once on mount — avoids re-renders when localStorage changes
   const isProduction = useRef(
@@ -45,16 +47,6 @@ function BrewingPanel() {
   priorityPotRef.current = priorityPot;
   const maxWattsRef = useRef(maxWatts);
   maxWattsRef.current = maxWatts;
-
-  useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((s) => {
-        if (s?.app?.auto_efficiency) setRegulationConfig(s.app.auto_efficiency);
-        if (s?.app?.max_watts != null) setMaxWatts(s.app.max_watts);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     // Initialize GPIO pins on the Pi when in production mode
@@ -274,7 +266,7 @@ function BrewingPanel() {
           name="BK"
           type="BK"
           potState={states.pots.BK}
-          regulationConfig={regulationConfig}
+          regulationConfig={bkRegConfig}
           effectiveEfficiency={bkEffective}
           potMaxWatts={BK_MAX_WATTS}
           efficiencyCap={bkCap}
@@ -284,7 +276,7 @@ function BrewingPanel() {
           name="MLT"
           type="MLT"
           potState={states.pots.MLT}
-          regulationConfig={regulationConfig}
+          regulationConfig={bkRegConfig}
           effectiveEfficiency={0}
           potMaxWatts={0}
           efficiencyCap={100}
@@ -294,7 +286,7 @@ function BrewingPanel() {
           name="HLT"
           type="HLT"
           potState={states.pots.HLT}
-          regulationConfig={regulationConfig}
+          regulationConfig={hltRegConfig}
           effectiveEfficiency={hltEffective}
           potMaxWatts={HLT_MAX_WATTS}
           efficiencyCap={hltCap}

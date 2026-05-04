@@ -142,14 +142,33 @@ class AutoEfficiencyStep(BaseModel):
     power: float
 
 
-class AutoEfficiencySettings(BaseModel):
-    enabled: bool = True
-    steps: list[AutoEfficiencyStep] = Field(default_factory=lambda: [
+class PotAutoEfficiency(BaseModel):
+    steps: list[AutoEfficiencyStep]
+
+
+def _bk_default_steps() -> "PotAutoEfficiency":
+    return PotAutoEfficiency(steps=[
         AutoEfficiencyStep(threshold=5,   power=100),
         AutoEfficiencyStep(threshold=2,   power=60),
         AutoEfficiencyStep(threshold=0.5, power=30),
         AutoEfficiencyStep(threshold=0,   power=0),
     ])
+
+
+def _hlt_default_steps() -> "PotAutoEfficiency":
+    # HLT element is weaker (5.5 kW vs BK's 8.5 kW) so it ramps harder near setpoint.
+    return PotAutoEfficiency(steps=[
+        AutoEfficiencyStep(threshold=5,   power=100),
+        AutoEfficiencyStep(threshold=2,   power=75),
+        AutoEfficiencyStep(threshold=0.5, power=45),
+        AutoEfficiencyStep(threshold=0,   power=0),
+    ])
+
+
+class AutoEfficiencySettings(BaseModel):
+    enabled: bool = True
+    bk: PotAutoEfficiency = Field(default_factory=_bk_default_steps)
+    hlt: PotAutoEfficiency = Field(default_factory=_hlt_default_steps)
 
 
 class AppSettings(BaseModel):
@@ -181,12 +200,27 @@ def read_config() -> Dict[str, Any]:
         return _config_cache
     try:
         with open(CONFIG_FILE, 'r') as f:
-            _config_cache = json.load(f)
-            return _config_cache
+            data = json.load(f)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Config file not found")
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Invalid config file format")
+
+    # Legacy migration: pre-per-pot configs had a single `steps` array under
+    # `auto_efficiency`.  Reset that section to defaults from config.default.json.
+    ae = data.get("app", {}).get("auto_efficiency", {})
+    if "steps" in ae and ("bk" not in ae or "hlt" not in ae):
+        try:
+            with open(DEFAULT_CONFIG_FILE, 'r') as f:
+                defaults = json.load(f)
+            data["app"]["auto_efficiency"] = defaults["app"]["auto_efficiency"]
+            write_config_atomic(data)  # also sets _config_cache
+            return _config_cache
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass  # fall through; Pydantic defaults will fill the gap
+
+    _config_cache = data
+    return _config_cache
 
 
 def write_config_atomic(data: Dict[str, Any]) -> None:

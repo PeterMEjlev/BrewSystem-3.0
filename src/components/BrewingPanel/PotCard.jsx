@@ -236,6 +236,7 @@ function potCardEqual(prev, next) {
   if (prev.effectiveEfficiency !== next.effectiveEfficiency) return false;
   if (prev.efficiencyCap !== next.efficiencyCap) return false;
   if (prev.onUpdate !== next.onUpdate) return false;
+  if (prev.regulationConfig !== next.regulationConfig) return false;
   const ps = prev.potState, ns = next.potState;
   if (ps.pv !== ns.pv) return false;
   if (ps.sv !== ns.sv) return false;
