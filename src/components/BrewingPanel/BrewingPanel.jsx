@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
+import { setPumpRampTarget, setPumpRampPower } from '../../utils/pumpRamp';
 import PotCard from './PotCard';
 import PumpCard from './PumpCard';
 import BrewTimer from './BrewTimer';
@@ -219,13 +220,13 @@ function BrewingPanel() {
 
   const handlePumpUpdate = useCallback((pumpName, updates) => {
     lastCommandTime.current = Date.now();
+    if (updates.speed !== undefined) {
+      setPumpRampTarget(pumpName, updates.speed);
+    }
     if (updates.on !== undefined) {
       brewSystem.setPump(pumpName, updates.on);
       if (isProduction) hardwareApi.setPumpPower(pumpName, updates.on);
-    }
-    if (updates.speed !== undefined) {
-      brewSystem.setPumpSpeed(pumpName, updates.speed);
-      if (isProduction) hardwareApi.setPumpSpeed(pumpName, updates.speed);
+      setPumpRampPower(pumpName, updates.on);
     }
     setStates((prev) => ({
       ...prev,
