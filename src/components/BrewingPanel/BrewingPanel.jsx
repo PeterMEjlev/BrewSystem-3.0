@@ -19,6 +19,7 @@ function BrewingPanel() {
 
   const autoEfficiency = settings?.app?.auto_efficiency ?? FALLBACK_AUTO_EFFICIENCY;
   const maxWatts = settings?.app?.max_watts ?? 11000;
+  const pollSeconds = settings?.app?.brewing_panel_poll_seconds ?? 1;
   // Per-pot regulation configs — each pot's effect deps will only fire when its own steps change.
   const bkRegConfig = useMemo(
     () => ({ enabled: autoEfficiency.enabled, steps: autoEfficiency.bk?.steps ?? FALLBACK_AUTO_EFFICIENCY.bk.steps }),
@@ -70,11 +71,10 @@ function BrewingPanel() {
       });
     }
 
-    // Poll full state every 1500ms so external changes (e.g. Bruce voice
-    // assistant) are reflected in the UI.  Sensors update every ~2-3 s on the
-    // Pi so polling faster than that is wasted CPU.  Polling is skipped for
-    // 2 s after the last user command to avoid stale responses overwriting
-    // optimistic state.
+    // Poll full state at the user-configured cadence (app.brewing_panel_poll_seconds,
+    // default 1 s — matches the DS18B20 read loop) so external changes (e.g. Bruce
+    // voice assistant) are reflected in the UI. Polling is skipped for 2 s after
+    // the last user command to avoid stale responses overwriting optimistic state.
     const POLL_SUPPRESS_MS = 2000;
     const interval = setInterval(async () => {
       if (isProduction) {
@@ -111,10 +111,10 @@ function BrewingPanel() {
           },
         }));
       }
-    }, 1500);
+    }, pollSeconds * 1000);
 
     return () => clearInterval(interval);
-  }, [isProduction]);
+  }, [isProduction, pollSeconds]);
 
   // Debounce timers for hardware API calls — prevents flooding the RPi backend
   const apiTimers = useRef({});

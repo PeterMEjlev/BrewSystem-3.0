@@ -6,6 +6,7 @@ const APP_DEFAULTS = {
   max_watts: 11000,
   max_chart_points: 500,
   cursor_visibility: 'auto',
+  brewing_panel_poll_seconds: 1,
 };
 
 const FALLBACK_REG_STEPS = [

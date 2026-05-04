@@ -452,6 +452,16 @@ function Settings() {
             </div>
 
             <div className={styles.inputGroup}>
+              <label>Brewing Panel Refresh Frequency (seconds):</label>
+              <input
+                type="number"
+                min="1"
+                value={settings.app.brewing_panel_poll_seconds ?? 1}
+                onChange={(e) => updateSetting('app.brewing_panel_poll_seconds', parseInt(e.target.value))}
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
               <label>Max Chart Points:</label>
               <input
                 type="number"

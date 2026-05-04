@@ -41,11 +41,13 @@ async def _temperature_read_loop():
     """Background task: continuously read all sensors and update the in-memory cache.
 
     Sensor reads are offloaded to a thread so the event loop stays responsive.
-    Each read of 3 DS18B20 sensors takes ~2-3 s on the Pi (750 ms per sensor at
-    12-bit resolution), which is why we must never call this inline in an API handler.
+    At 10-bit resolution each sensor takes ~188 ms, so a sequential 3-sensor
+    read takes ~565 ms — comfortably inside the 1 s loop period.
     """
     logger = logging.getLogger(__name__)
+    loop_period = 1.0
     while True:
+        start = time.monotonic()
         try:
             config = read_config()
             sensors = config["sensors"]["ds18b20"]
@@ -53,9 +55,8 @@ async def _temperature_read_loop():
             _temperature_cache.update(temps)
         except Exception as e:
             logger.error("Temp read error: %s", e)
-        # Yield briefly to keep the event loop healthy; the sensor read itself
-        # already takes ~2-3 s so this effectively controls the update frequency.
-        await asyncio.sleep(0.5)
+        elapsed = time.monotonic() - start
+        await asyncio.sleep(max(0.05, loop_period - elapsed))
 
 
 async def _temperature_log_loop():
@@ -82,6 +83,9 @@ def _normalize_config():
 async def lifespan(app: FastAPI):
     _normalize_config()
     session_logger.start_new_session()
+    sensors = read_config()["sensors"]["ds18b20"]
+    for serial in sensors.values():
+        utils_rpi.initialize_ds18b20_resolution(serial, resolution="10")
     read_task = asyncio.create_task(_temperature_read_loop())
     log_task = asyncio.create_task(_temperature_log_loop())
     yield
@@ -175,6 +179,7 @@ class AppSettings(BaseModel):
     model_config = ConfigDict(extra='allow')
 
     log_interval_seconds: int = 10
+    brewing_panel_poll_seconds: int = 1
     max_watts: int = 11000
     max_chart_points: int = 150
     auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
