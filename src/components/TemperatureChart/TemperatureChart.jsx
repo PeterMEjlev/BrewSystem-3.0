@@ -414,6 +414,9 @@ function TemperatureChart() {
     ? 'Last 1 hr'
     : `Last ${windowMinutes} min`;
 
+  const latest = data.length > 0 ? data[data.length - 1] : null;
+  const formatTemp = (v) => (v == null || Number.isNaN(Number(v)) ? '--' : Number(v).toFixed(1));
+
   return (
     <div className={styles.chartPanel}>
       <div className={styles.header}>
@@ -463,6 +466,27 @@ function TemperatureChart() {
           </button>
           </div>
         </div>
+      </div>
+
+      <div className={styles.currentTempStrip}>
+        {visibility.BK && (
+          <div className={styles.currentTempItem} style={{ color: theme.vesselBK }}>
+            <span className={styles.currentTempLabel}>BK</span>
+            <span className={styles.currentTempValue}>{formatTemp(latest?.BK)}<span className={styles.currentTempUnit}>°C</span></span>
+          </div>
+        )}
+        {visibility.MLT && (
+          <div className={styles.currentTempItem} style={{ color: theme.vesselMLT }}>
+            <span className={styles.currentTempLabel}>MLT</span>
+            <span className={styles.currentTempValue}>{formatTemp(latest?.MLT)}<span className={styles.currentTempUnit}>°C</span></span>
+          </div>
+        )}
+        {visibility.HLT && (
+          <div className={styles.currentTempItem} style={{ color: theme.vesselHLT }}>
+            <span className={styles.currentTempLabel}>HLT</span>
+            <span className={styles.currentTempValue}>{formatTemp(latest?.HLT)}<span className={styles.currentTempUnit}>°C</span></span>
+          </div>
+        )}
       </div>
 
       <div

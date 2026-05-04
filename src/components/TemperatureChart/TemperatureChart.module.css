@@ -130,6 +130,46 @@
   color: var(--color-text-dark);
 }
 
+.currentTempStrip {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  min-height: 72px;
+}
+
+.currentTempItem {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex: 1;
+  justify-content: center;
+}
+
+.currentTempLabel {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+}
+
+.currentTempValue {
+  font-size: 2.75rem;
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.currentTempUnit {
+  font-size: 1.5rem;
+  font-weight: var(--font-weight-semibold);
+  margin-left: 4px;
+  opacity: 0.8;
+}
+
 .chartContainer {
   flex: 1;
   position: relative;
