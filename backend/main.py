@@ -551,6 +551,16 @@ async def get_temperature_average(pot: str, minutes: float) -> Dict[str, Any]:
     }
 
 
+@app.get("/api/temperature/history")
+async def get_temperature_history() -> list:
+    """Return the full temperature log for the current session.
+
+    Each row is {timestamp, bk, mlt, hlt} — the shape the chart expects to
+    seed itself on (re)mount so prior readings survive a page reload.
+    """
+    return session_logger.get_history()
+
+
 @app.get("/api/hardware/temperature")
 async def get_temperatures() -> Dict[str, Any]:
     """Return the latest cached DS18B20 temperature readings"""
@@ -565,15 +575,97 @@ BREWERSFRIEND_API_BASE = "https://api.brewersfriend.com/v1"
 def _get_api_key() -> str:
     api_key = os.getenv("BREWERSFRIEND_API_KEY", "").strip()
     if not api_key:
-        raise HTTPException(status_code=500, detail="BREWERSFRIEND_API_KEY not configured in .env")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Brewer's Friend API key is not configured. Add a line "
+                "'BREWERSFRIEND_API_KEY=your-key-here' to the .env file in the project "
+                "root, then restart the backend. You can find your key under "
+                "Brewer's Friend → Account → API Key."
+            ),
+        )
     return api_key
+
+
+def _raise_for_brewersfriend_status(resp: "httpx.Response") -> None:
+    """Translate a non-200 Brewer's Friend response into a clear, actionable error."""
+    if resp.status_code == 200:
+        return
+    if resp.status_code == 401:
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Brewer's Friend rejected the API key (401 Unauthorized). Check that "
+                "BREWERSFRIEND_API_KEY in your .env file is correct and has not expired, "
+                "then restart the backend."
+            ),
+        )
+    if resp.status_code == 403:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Brewer's Friend denied access (403 Forbidden). Your account may not have "
+                "API access enabled — verify your subscription on brewersfriend.com."
+            ),
+        )
+    if resp.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail="Brewer's Friend rate limit reached (429). Please wait a minute and try again.",
+        )
+    raise HTTPException(
+        status_code=502,
+        detail=(
+            f"Brewer's Friend returned an unexpected error (HTTP {resp.status_code}). "
+            f"This is usually temporary — try again shortly. Details: {resp.text[:200]}"
+        ),
+    )
+
+
+async def _brewersfriend_get(client: "httpx.AsyncClient", *, params: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+    """GET /recipes from Brewer's Friend, returning parsed JSON.
+
+    Converts connection failures, timeouts, bad statuses, and malformed responses
+    into HTTPExceptions whose `detail` tells the user exactly what to fix.
+    """
+    try:
+        resp = await client.get(
+            f"{BREWERSFRIEND_API_BASE}/recipes",
+            headers={"X-API-Key": api_key},
+            params=params,
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "Brewer's Friend did not respond within 15 seconds. Check this system's "
+                "internet connection and try again."
+            ),
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Could not reach Brewer's Friend (api.brewersfriend.com). Check that this "
+                f"system has internet access, then try again. ({type(e).__name__})"
+            ),
+        )
+
+    _raise_for_brewersfriend_status(resp)
+
+    try:
+        return resp.json()
+    except ValueError:
+        raise HTTPException(
+            status_code=502,
+            detail="Brewer's Friend returned a response that could not be read. Try again shortly.",
+        )
 
 
 @app.get("/api/recipes")
 async def get_recipes() -> Dict[str, Any]:
     """Fetch all recipes from Brewer's Friend (without ingredients for speed)."""
     api_key = _get_api_key()
-    headers = {"X-API-Key": api_key}
 
     all_recipes = []
     offset = 0
@@ -581,17 +673,11 @@ async def get_recipes() -> Dict[str, Any]:
 
     async with httpx.AsyncClient(timeout=15) as client:
         while True:
-            resp = await client.get(
-                f"{BREWERSFRIEND_API_BASE}/recipes",
-                headers=headers,
+            data = await _brewersfriend_get(
+                client,
                 params={"sort": "created_at:-1", "limit": limit, "offset": offset},
+                api_key=api_key,
             )
-            if resp.status_code == 401:
-                raise HTTPException(status_code=401, detail="Invalid Brewer's Friend API key")
-            if resp.status_code != 200:
-                raise HTTPException(status_code=resp.status_code, detail=f"Brewer's Friend API error: {resp.text}")
-
-            data = resp.json()
             batch = data.get("recipes", [])
             if not batch:
                 break
@@ -618,23 +704,19 @@ async def get_recipes() -> Dict[str, Any]:
 async def get_recipe(recipe_id: int) -> Dict[str, Any]:
     """Fetch a single recipe with full ingredients from Brewer's Friend."""
     api_key = _get_api_key()
-    headers = {"X-API-Key": api_key}
 
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{BREWERSFRIEND_API_BASE}/recipes",
-            headers=headers,
+        data = await _brewersfriend_get(
+            client,
             params={"id": recipe_id, "ingredients": "true"},
+            api_key=api_key,
         )
-        if resp.status_code == 401:
-            raise HTTPException(status_code=401, detail="Invalid Brewer's Friend API key")
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=f"Brewer's Friend API error: {resp.text}")
-
-        data = resp.json()
         recipes = data.get("recipes", [])
         if not recipes:
-            raise HTTPException(status_code=404, detail="Recipe not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Recipe #{recipe_id} was not found in your Brewer's Friend account.",
+            )
 
         recipe = recipes[0]
 

@@ -19,17 +19,20 @@ export function lttbDownsample(data, threshold) {
   let prevSelectedIndex = 0;
 
   for (let i = 0; i < bucketCount; i++) {
-    // Compute centroid of the next bucket (used as the far vertex of the triangle)
+    // Compute centroid of the next bucket (used as the far vertex of the triangle).
+    // Cap the range at `len` (not `len - 1`) so the final bucket still includes the
+    // last point — otherwise nextBucketLen is 0, the average is NaN, and the last
+    // bucket degrades to picking its first point instead of the largest-triangle one.
     const nextBucketStart = Math.floor((i + 1) * bucketSize) + 1;
-    const nextBucketEnd = Math.min(Math.floor((i + 2) * bucketSize) + 1, len - 1);
+    const nextBucketEnd = Math.min(Math.floor((i + 2) * bucketSize) + 1, len);
     const nextBucketLen = nextBucketEnd - nextBucketStart;
     let avgTs = 0, avgVal = 0;
     for (let j = nextBucketStart; j < nextBucketEnd; j++) {
       avgTs += data[j].ts;
       avgVal += data[j][yKey] ?? 0;
     }
-    avgTs /= nextBucketLen;
-    avgVal /= nextBucketLen;
+    if (nextBucketLen > 0) { avgTs /= nextBucketLen; avgVal /= nextBucketLen; }
+    else { avgTs = data[len - 1].ts; avgVal = data[len - 1][yKey] ?? 0; }
 
     // Find the point in the current bucket that forms the largest triangle
     const currentBucketStart = Math.floor(i * bucketSize) + 1;

@@ -58,6 +58,12 @@ class MockBrewSystem {
   }
 
   startSimulation() {
+    // Only simulate in development. In production (on the Pi) the panel and chart
+    // read real sensor data from the backend, so ticking these curves every second
+    // would be pure wasted work on a resource-constrained device.
+    let isDev = false;
+    try { isDev = localStorage.getItem('brewSystemEnvironment') === 'development'; } catch { /* SSR/no storage */ }
+    if (!isDev) return;
     setInterval(() => {
       this.updateTemperatures();
     }, 1000);

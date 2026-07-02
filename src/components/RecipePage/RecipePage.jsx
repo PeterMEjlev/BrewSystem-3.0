@@ -2,6 +2,33 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { playClick, playNavigate } from '../../utils/sounds';
 import styles from './RecipePage.module.css';
 
+// Pull the most descriptive message possible out of a failed response.
+// Order: FastAPI's JSON { detail }, then a short plain-text body (e.g. the
+// bare "Internal Server Error" FastAPI sends for unhandled exceptions), then
+// a generic status fallback. HTML bodies (the SPA index.html) are ignored.
+async function readErrorMessage(response, fallback) {
+  let body = '';
+  try { body = await response.text(); } catch { /* body unavailable */ }
+  if (body) {
+    try {
+      const data = JSON.parse(body);
+      if (data && data.detail) return data.detail;
+    } catch { /* not JSON */ }
+    const trimmed = body.trim();
+    if (trimmed && trimmed.length < 300 && !trimmed.startsWith('<')) return trimmed;
+  }
+  return fallback;
+}
+
+// fetch() itself throws (vs. returning a non-ok response) only when the request
+// never completes — almost always because the backend isn't reachable.
+function describeNetworkError(err, fallback) {
+  if (err instanceof TypeError) {
+    return 'Could not reach the brew server. Make sure the backend is running, then retry.';
+  }
+  return err?.message || fallback;
+}
+
 function RecipePage() {
   const panelRef = useRef(null);
   const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false });
@@ -64,14 +91,13 @@ function RecipePage() {
     try {
       const response = await fetch('/api/recipes');
       if (!response.ok) {
-        const detail = await response.json().catch(() => ({}));
-        throw new Error(detail.detail || `Failed to fetch recipes (${response.status})`);
+        throw new Error(await readErrorMessage(response, `Failed to fetch recipes (HTTP ${response.status}).`));
       }
       const data = await response.json();
       setRecipes(data.recipes || []);
     } catch (err) {
       console.error('Error fetching recipes:', err);
-      setError(err.message);
+      setError(describeNetworkError(err, 'Failed to fetch recipes.'));
     } finally {
       setLoading(false);
     }
@@ -83,15 +109,14 @@ function RecipePage() {
     try {
       const response = await fetch(`/api/recipes/${id}`);
       if (!response.ok) {
-        const detail = await response.json().catch(() => ({}));
-        throw new Error(detail.detail || `Failed to fetch recipe (${response.status})`);
+        throw new Error(await readErrorMessage(response, `Failed to fetch recipe (HTTP ${response.status}).`));
       }
       const data = await response.json();
       setSelectedRecipe(data);
       try { sessionStorage.setItem('selectedRecipe', JSON.stringify(data)); } catch {}
     } catch (err) {
       console.error('Error fetching recipe:', err);
-      setError(err.message);
+      setError(describeNetworkError(err, 'Failed to fetch recipe.'));
     } finally {
       setDetailLoading(false);
     }
