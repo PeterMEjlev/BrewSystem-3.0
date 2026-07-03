@@ -7,6 +7,23 @@
   height: 100%;
 }
 
+.connectionBanner {
+  background: #7f1d1d;
+  border: 2px solid #ef4444;
+  border-radius: 12px;
+  color: #fecaca;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  padding: 12px 20px;
+  text-align: center;
+  animation: connectionPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes connectionPulse {
+  0%, 100% { border-color: #ef4444; }
+  50% { border-color: #fca5a5; }
+}
+
 .potRow {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

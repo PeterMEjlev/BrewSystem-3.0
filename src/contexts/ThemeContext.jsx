@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { useSettings } from './SettingsContext';
 
 export const DEFAULT_THEME = {
   bgPrimary: '#0f172a',
@@ -73,18 +74,17 @@ function applyCssVars(theme) {
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(DEFAULT_THEME);
-
-  // Fetch theme from API on mount
-  useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((s) => {
-        if (s.theme && Object.keys(s.theme).length > 0) {
-          setTheme((prev) => ({ ...prev, ...s.theme }));
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // Settings are fetched once by SettingsProvider — seed the theme from there
+  // instead of doing a second /api/settings request on startup. Render-phase
+  // adjustment ("adjusting state when a prop changes") so no extra effect pass.
+  const { settings } = useSettings();
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded && settings) {
+    setSeeded(true);
+    if (settings.theme && Object.keys(settings.theme).length > 0) {
+      setTheme((prev) => ({ ...prev, ...settings.theme }));
+    }
+  }
 
   // Apply CSS variables whenever theme changes
   useEffect(() => {

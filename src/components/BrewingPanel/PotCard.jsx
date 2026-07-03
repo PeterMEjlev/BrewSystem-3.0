@@ -2,16 +2,12 @@ import { useState, useEffect, memo, useMemo } from 'react';
 import { getTemperatureColor } from '../../utils/temperatureColor';
 import { useTheme } from '../../contexts/ThemeContext';
 import { playToggleOn, playToggleOff } from '../../utils/sounds';
+import { DEFAULT_AUTO_EFFICIENCY } from '../../utils/appDefaults';
 import styles from './PotCard.module.css';
 
 const DEFAULT_REG_CONFIG = {
-  enabled: true,
-  steps: [
-    { threshold: 5,   power: 100 },
-    { threshold: 2,   power: 60  },
-    { threshold: 0.5, power: 30  },
-    { threshold: 0,   power: 0   },
-  ],
+  enabled: DEFAULT_AUTO_EFFICIENCY.bk.enabled,
+  steps: DEFAULT_AUTO_EFFICIENCY.bk.steps,
 };
 
 function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, effectiveEfficiency = 0, potMaxWatts = 0, efficiencyCap = 100, onUpdate }) {
@@ -53,47 +49,10 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
     onUpdate({ efficiency: value });
   };
 
-  // Auto efficiency control when regulation and auto efficiency are enabled
-  useEffect(() => {
-    if (type !== 'MLT' && potState.regulationEnabled && regulationConfig.enabled) {
-      const diff = localSV - potState.pv;
-      if (diff <= 0) {
-        if (potState.heaterOn) {
-          onUpdate({ heaterOn: false });
-        }
-      } else {
-        const steps = regulationConfig.steps;
-        let power = steps[steps.length - 1].power;
-        for (const step of steps.slice(0, -1)) {
-          if (diff > step.threshold) { power = step.power; break; }
-        }
-        const cappedPower = Math.min(power, efficiencyCap);
-        if (!potState.heaterOn) {
-          setLocalEfficiency(cappedPower);
-          onUpdate({ heaterOn: true, efficiency: cappedPower });
-        } else if (localEfficiency !== cappedPower) {
-          setLocalEfficiency(cappedPower);
-          onUpdate({ efficiency: cappedPower });
-        }
-      }
-    }
-  }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig, efficiencyCap]);
-
-  // Manual efficiency control when regulation is enabled but auto efficiency is off
-  useEffect(() => {
-    if (type !== 'MLT' && potState.regulationEnabled && !regulationConfig.enabled) {
-      const diff = localSV - potState.pv;
-      if (diff <= 0) {
-        if (potState.heaterOn) {
-          onUpdate({ heaterOn: false });
-        }
-      } else {
-        if (!potState.heaterOn) {
-          onUpdate({ heaterOn: true, efficiency: localEfficiency });
-        }
-      }
-    }
-  }, [potState.pv, localSV, potState.regulationEnabled, potState.heaterOn, type, regulationConfig, localEfficiency]);
+  // NOTE: the regulation control loop is intentionally NOT here. The backend
+  // regulates (see _regulation_tick in backend/main.py) so a browser crash
+  // can never leave a heater unregulated; in dev the mock simulates the same
+  // logic. This card only displays polled state and forwards user input.
 
   // Clamp slider down when the power cap drops below the current requested efficiency
   useEffect(() => {
@@ -104,7 +63,9 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   }, [efficiencyCap]);
 
   const { theme } = useTheme();
-  const pvColor = getTemperatureColor(potState.pv);
+  // pv can be null when the sensor fails — show '--' rather than a fake number
+  const sensorOk = potState.pv != null;
+  const pvColor = sensorOk ? getTemperatureColor(potState.pv) : 'var(--color-text-muted)';
   const svColor = getTemperatureColor(localSV);
   const glowIntensity = type !== 'MLT' && potState.heaterOn ? effectiveEfficiency / 100 : 0;
   const rawWatts = type !== 'MLT' && potState.heaterOn ? (effectiveEfficiency / 100) * potMaxWatts : 0;
@@ -150,8 +111,8 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
       <div className={styles.tempDisplay}>
         <div className={`${styles.pvSection} ${type === 'MLT' ? styles.mltTemp : ''}`}>
           {type !== 'MLT' && <div className={styles.pvLabel}>Current</div>}
-          <div className={styles.pvValue} style={{ color: pvColor }}>
-            {potState.pv.toFixed(1)}°
+          <div className={styles.pvValue} style={{ color: pvColor }} title={sensorOk ? undefined : 'Sensor not responding'}>
+            {sensorOk ? `${potState.pv.toFixed(1)}°` : '--'}
           </div>
         </div>
         {type !== 'MLT' && potState.regulationEnabled && (

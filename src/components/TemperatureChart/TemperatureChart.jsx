@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from 'recharts';
+import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
+import uPlot from 'uplot';
+import 'uplot/dist/uPlot.min.css';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import styles from './TemperatureChart.module.css';
-import { lttbDownsample } from '../../utils/downsample';
 
 const WINDOW_MAX = 120; // slider max = "Full session"
 const MIN_ZOOM_MS = 30000; // minimum zoom range: 30 seconds
@@ -12,85 +13,58 @@ const MAX_PERSISTED_POINTS = 8640; // 24h at 10s intervals
 
 const formatTime = (date) =>
   date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const formatTimeShort = (date) =>
+  date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-// --- Module-level data store & polling (survives component unmount/remount) ---
+// --- Module-level data store (survives component unmount/remount) ---
+// Rows are { ts (epoch ms, server-authoritative in production), bk, mlt, hlt }.
+// Consumed via useSyncExternalStore — appendRows replaces the array reference.
 let persistedData = [];
-let pollingStarted = false;
 const subscribers = new Set(); // functions to call when data changes
 
-function notifySubscribers() {
-  const snapshot = [...persistedData];
-  subscribers.forEach((fn) => fn(snapshot));
+function subscribeStore(cb) {
+  subscribers.add(cb);
+  return () => subscribers.delete(cb);
 }
 
-function startGlobalPolling() {
-  if (pollingStarted) return;
-  pollingStarted = true;
+function getStoreSnapshot() {
+  return persistedData;
+}
 
-  const isProduction = localStorage.getItem('brewSystemEnvironment') !== 'development';
-
-  // Seed with history in production
-  if (isProduction) {
-    hardwareApi.getTemperatureHistory().then((history) => {
-      if (!Array.isArray(history) || history.length === 0) return;
-      if (persistedData.length > 0) return; // already have data from polling
-      persistedData = history.map((row) => ({
-        ts: new Date(row.timestamp).getTime(),
-        time: formatTime(new Date(row.timestamp)),
-        BK: row.bk,
-        MLT: row.mlt,
-        HLT: row.hlt,
-      }));
-      if (persistedData.length > MAX_PERSISTED_POINTS) {
-        persistedData = persistedData.slice(persistedData.length - MAX_PERSISTED_POINTS);
-      }
-      notifySubscribers();
-    });
+function appendRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  // Dedupe by timestamp — overlapping top-ups (StrictMode double effects,
+  // slow responses) may return rows we already have.
+  const lastTs = persistedData.length > 0 ? persistedData[persistedData.length - 1].ts : -Infinity;
+  const fresh = rows.filter((r) => r.ts > lastTs);
+  if (fresh.length === 0) return;
+  persistedData = [...persistedData, ...fresh];
+  if (persistedData.length > MAX_PERSISTED_POINTS) {
+    persistedData = persistedData.slice(persistedData.length - MAX_PERSISTED_POINTS);
   }
-
-  const poll = async () => {
-    let bk, mlt, hlt;
-
-    if (isProduction) {
-      const temps = await hardwareApi.getTemperatures();
-      if (!temps) return;
-      ({ bk, mlt, hlt } = temps);
-    } else {
-      const states = brewSystem.getAllStates();
-      bk = states.pots.BK.pv;
-      mlt = states.pots.MLT.pv;
-      hlt = states.pots.HLT.pv;
-    }
-
-    persistedData = [...persistedData, {
-      ts: Date.now(),
-      time: formatTime(new Date()),
-      BK: bk,
-      MLT: mlt,
-      HLT: hlt,
-    }];
-    if (persistedData.length > MAX_PERSISTED_POINTS) {
-      persistedData = persistedData.slice(persistedData.length - MAX_PERSISTED_POINTS);
-    }
-    notifySubscribers();
-  };
-
-  const beginPolling = (ms) => {
-    const delay = ms - (Date.now() % ms);
-    setTimeout(() => {
-      poll();
-      setInterval(poll, ms);
-    }, delay);
-  };
-
-  fetch('/api/settings')
-    .then((r) => r.json())
-    .then((s) => beginPolling((s?.app?.log_interval_seconds ?? 10) * 1000))
-    .catch(() => beginPolling(10000));
+  subscribers.forEach((fn) => fn());
 }
 
-// Start polling immediately on module load (not lazily on first mount)
-startGlobalPolling();
+// Incremental history fetch: first call pulls the whole session, subsequent
+// calls only rows newer than what we already hold (?since=<epoch_ms>).
+let topUpInFlight = false;
+async function topUpFromServer() {
+  if (topUpInFlight) return;
+  topUpInFlight = true;
+  try {
+    const lastTs = persistedData.length > 0 ? persistedData[persistedData.length - 1].ts : undefined;
+    const rows = await hardwareApi.getTemperatureHistory(lastTs);
+    if (!Array.isArray(rows)) return;
+    appendRows(rows.map((r) => ({
+      ts: r.ts ?? new Date(r.timestamp).getTime(),
+      bk: r.bk,
+      mlt: r.mlt,
+      hlt: r.hlt,
+    })));
+  } finally {
+    topUpInFlight = false;
+  }
+}
 
 function getTouchDistance(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
@@ -100,46 +74,65 @@ function getTouchDistance(touches) {
 
 function TemperatureChart() {
   const { theme } = useTheme();
-  const [data, setData] = useState(persistedData);
+  const { settings } = useSettings();
+  const data = useSyncExternalStore(subscribeStore, getStoreSnapshot);
   const [visibility, setVisibility] = useState({
     BK: true,
     MLT: true,
     HLT: true,
   });
   const [windowMinutes, setWindowMinutes] = useState(WINDOW_MAX);
-  const [zoomDomain, setZoomDomain] = useState(null); // { start, end } timestamps or null
+  const [zoomDomain, setZoomDomain] = useState(null); // { start, end } ms timestamps or null
   const [isPanning, setIsPanning] = useState(false);
-  const [maxChartPoints, setMaxChartPoints] = useState(150); // kept low for RPi SVG performance
-  const [tooltipState, setTooltipState] = useState(null); // { payload, label, x, y }
+  const [tooltipState, setTooltipState] = useState(null); // { point, x, y }
   const chartContainerRef = useRef(null);
+  const plotElRef = useRef(null); // div uPlot renders into
+  const plotRef = useRef(null); // uPlot instance
   const panRef = useRef(null); // { startX, domainStart, domainEnd, chartWidth }
   const touchRef = useRef(null); // { distance, centerX, domainStart, domainEnd }
   const dragHappenedRef = useRef(false);
-  // RAF throttle refs — prevent re-rendering on every pixel during pan/zoom
+  // RAF throttle refs — prevent scale churn on every pixel during pan/zoom
   const panRafRef = useRef(null);
   const latestPanRef = useRef(null);
   const touchRafRef = useRef(null);
   const latestTouchRef = useRef(null);
 
-  // Subscribe to data updates (polling already started at module level)
-  useEffect(() => {
-    const handler = (snapshot) => setData(snapshot);
-    subscribers.add(handler);
-    // Sync with any data collected while unmounted
-    setData([...persistedData]);
-    return () => { subscribers.delete(handler); };
-  }, []);
+  // Read environment once on mount — avoids re-renders when localStorage changes
+  const [isProduction] = useState(
+    () => localStorage.getItem('brewSystemEnvironment') !== 'development'
+  );
 
-  // Fetch max chart points from settings on every mount so changes take effect immediately
-  useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((s) => setMaxChartPoints(s?.app?.max_chart_points ?? 150))
-      .catch(() => {});
-  }, []);
+  // Poll cadence follows the backend log interval — settings come from
+  // SettingsProvider, so changes apply without an app restart.
+  const logIntervalSeconds = settings?.app?.log_interval_seconds ?? 10;
 
-  // Reset zoom and tooltip when slider changes
-  useEffect(() => { setZoomDomain(null); setTooltipState(null); }, [windowMinutes]);
+  // Data collection: in production, top up from the server history (the
+  // backend log loop is the single sampler); in dev, sample the mock locally.
+  useEffect(() => {
+    const tick = () => {
+      if (isProduction) {
+        topUpFromServer();
+      } else {
+        const states = brewSystem.getAllStates();
+        appendRows([{
+          ts: Date.now(),
+          bk: states.pots.BK.pv,
+          mlt: states.pots.MLT.pv,
+          hlt: states.pots.HLT.pv,
+        }]);
+      }
+    };
+    tick();
+    const id = setInterval(tick, Math.max(1, logIntervalSeconds) * 1000);
+    return () => clearInterval(id);
+  }, [isProduction, logIntervalSeconds]);
+
+  // Slider changes also reset zoom + tooltip (handled in its onChange)
+  const handleWindowChange = (e) => {
+    setWindowMinutes(Number(e.target.value));
+    setZoomDomain(null);
+    setTooltipState(null);
+  };
 
   const toggleVisibility = (pot) => {
     setVisibility((prev) => ({
@@ -148,7 +141,7 @@ function TemperatureChart() {
     }));
   };
 
-  // Memoized window slice — only recomputes when data or windowMinutes changes, not on every render
+  // Memoized window slice — only recomputes when data or windowMinutes changes
   const windowData = useMemo(() => {
     if (data.length === 0) return data;
     const now = data[data.length - 1].ts;
@@ -156,15 +149,25 @@ function TemperatureChart() {
     return windowMinutes >= WINDOW_MAX ? data : data.filter((p) => p.ts >= cutoff);
   }, [data, windowMinutes]);
 
-  // Memoized display data — only recomputes when zoom domain, window, or point limit changes
-  const displayData = useMemo(() => {
-    const raw = zoomDomain
-      ? windowData.filter((p) => p.ts >= zoomDomain.start && p.ts <= zoomDomain.end)
-      : windowData;
-    return lttbDownsample(raw, maxChartPoints);
-  }, [windowData, zoomDomain, maxChartPoints]);
+  // Columnar arrays for uPlot: [xs (seconds), bk, mlt, hlt]. Canvas rendering
+  // handles the full point count — no downsampling needed.
+  const chartData = useMemo(() => {
+    const n = windowData.length;
+    const xs = new Array(n);
+    const bk = new Array(n);
+    const mlt = new Array(n);
+    const hlt = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const row = windowData[i];
+      xs[i] = row.ts / 1000;
+      bk[i] = row.bk ?? null;
+      mlt[i] = row.mlt ?? null;
+      hlt[i] = row.hlt ?? null;
+    }
+    return [xs, bk, mlt, hlt];
+  }, [windowData]);
 
-  // Helper: get full time bounds of the slider window
+  // Helper: get full time bounds of the slider window (ms)
   const getWindowBounds = useCallback(() => {
     if (windowData.length < 2) return null;
     return { start: windowData[0].ts, end: windowData[windowData.length - 1].ts };
@@ -176,16 +179,114 @@ function TemperatureChart() {
     return getWindowBounds();
   }, [zoomDomain, getWindowBounds]);
 
-  // Helper: map a clientX pixel position to a 0–1 ratio across the chart area
+  // Helper: map a clientX pixel position to a 0–1 ratio across the plot area
   const xToRatio = useCallback((clientX) => {
-    const container = chartContainerRef.current;
-    if (!container) return 0.5;
-    const rect = container.getBoundingClientRect();
-    // Approximate recharts drawing area (accounting for Y-axis label + margins)
-    const chartLeft = 80;
-    const chartRight = rect.width - 30;
-    return Math.max(0, Math.min(1, (clientX - rect.left - chartLeft) / (chartRight - chartLeft)));
+    const u = plotRef.current;
+    if (!u) return 0.5;
+    const rect = u.over.getBoundingClientRect();
+    if (rect.width === 0) return 0.5;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   }, []);
+
+  // ── uPlot instance ─────────────────────────────────────────────────────────
+  // Created once on mount. Series strokes are resolved from the theme's CSS
+  // variables at draw time, so theme changes only need a repaint — the
+  // instance is never recreated.
+  useEffect(() => {
+    const el = plotElRef.current;
+    if (!el) return;
+    const cssColor = (varName, fallback) => () => {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      return v || fallback;
+    };
+    const opts = {
+      width: Math.max(el.clientWidth, 50),
+      height: Math.max(el.clientHeight, 50),
+      legend: { show: false },
+      cursor: { show: false },
+      scales: {
+        x: { time: true },
+        y: { range: [0, 100] },
+      },
+      series: [
+        {},
+        { label: 'BK', stroke: cssColor('--color-vessel-bk', '#ef4444'), width: 2 },
+        { label: 'MLT', stroke: cssColor('--color-vessel-mlt', '#10b981'), width: 2 },
+        { label: 'HLT', stroke: cssColor('--color-vessel-hlt', '#3b82f6'), width: 2 },
+      ],
+      axes: [
+        {
+          stroke: '#94a3b8',
+          ticks: { stroke: '#94a3b8' },
+          grid: { stroke: '#334155', dash: [3, 3] },
+          values: (u, splits) => {
+            const min = u.scales.x.min ?? 0;
+            const max = u.scales.x.max ?? 0;
+            const fmt = (max - min) < 60 ? formatTime : formatTimeShort;
+            return splits.map((s) => fmt(new Date(s * 1000)));
+          },
+        },
+        {
+          label: '°C',
+          labelGap: 4,
+          stroke: '#94a3b8',
+          ticks: { stroke: '#94a3b8' },
+          grid: { stroke: '#334155', dash: [3, 3] },
+        },
+      ],
+    };
+    const u = new uPlot(opts, [[], [], [], []], el);
+    plotRef.current = u;
+
+    // Keep the canvas sized to its container (also fires when the chart tab
+    // becomes visible again after display:none).
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) u.setSize({ width, height });
+    });
+    ro.observe(el);
+
+    return () => {
+      ro.disconnect();
+      u.destroy();
+      plotRef.current = null;
+    };
+  }, []);
+
+  // Repaint when the vessel colors change — strokes re-resolve their CSS vars
+  useEffect(() => {
+    plotRef.current?.redraw(false);
+  }, [theme.vesselBK, theme.vesselMLT, theme.vesselHLT]);
+
+  // Push data + x-scale into the plot
+  useEffect(() => {
+    const u = plotRef.current;
+    if (!u) return;
+    u.setData(chartData, false);
+    const xs = chartData[0];
+    if (xs.length === 0) return;
+    let min, max;
+    if (zoomDomain) {
+      min = zoomDomain.start / 1000;
+      max = zoomDomain.end / 1000;
+    } else {
+      min = xs[0];
+      max = xs[xs.length - 1];
+      if (min === max) { min -= 30; max += 30; } // single point — give it room
+    }
+    u.setScale('x', { min, max });
+  }, [chartData, zoomDomain]);
+
+  // Push series visibility
+  useEffect(() => {
+    const u = plotRef.current;
+    if (!u) return;
+    u.setSeries(1, { show: visibility.BK });
+    u.setSeries(2, { show: visibility.MLT });
+    u.setSeries(3, { show: visibility.HLT });
+  }, [visibility]);
+
+  // ── Zoom / pan interactions (same gestures as before) ─────────────────────
 
   // Helper: apply a zoom centered on a pivot ratio
   const applyZoom = useCallback((zoomFactor, pivotRatio) => {
@@ -220,8 +321,8 @@ function TemperatureChart() {
     const windowBounds = getWindowBounds();
     if (!windowBounds || !refDomain) return;
 
-    const fullRange = windowBounds.end - windowBounds.start;
-    const deltaMs = deltaRatio * fullRange;
+    const visibleRange = refDomain.end - refDomain.start;
+    const deltaMs = deltaRatio * visibleRange;
 
     let newStart = refDomain.start - deltaMs;
     let newEnd = refDomain.end - deltaMs;
@@ -264,13 +365,13 @@ function TemperatureChart() {
     if (!zoomDomain || e.button !== 0) return;
     e.preventDefault();
     setIsPanning(true);
-    // Cache chartWidth here to avoid getBoundingClientRect on every mousemove
-    const rect = chartContainerRef.current?.getBoundingClientRect();
+    // Cache the plot width here to avoid getBoundingClientRect on every mousemove
+    const rect = plotRef.current?.over.getBoundingClientRect();
     panRef.current = {
       startX: e.clientX,
       domainStart: zoomDomain.start,
       domainEnd: zoomDomain.end,
-      chartWidth: rect ? rect.width - 110 : 800,
+      chartWidth: rect && rect.width > 0 ? rect.width : 800,
     };
   }, [zoomDomain]);
 
@@ -304,14 +405,14 @@ function TemperatureChart() {
       const bounds = getVisibleBounds();
       touchRef.current = { distance: dist, centerX, domainStart: bounds?.start, domainEnd: bounds?.end };
     } else if (e.touches.length === 1 && zoomDomain) {
-      // Pan start — cache chartWidth to avoid reflow on every touchmove
+      // Pan start — cache the plot width to avoid reflow on every touchmove
       setIsPanning(true);
-      const rect = chartContainerRef.current?.getBoundingClientRect();
+      const rect = plotRef.current?.over.getBoundingClientRect();
       panRef.current = {
         startX: e.touches[0].clientX,
         domainStart: zoomDomain.start,
         domainEnd: zoomDomain.end,
-        chartWidth: rect ? rect.width - 110 : 800,
+        chartWidth: rect && rect.width > 0 ? rect.width : 800,
       };
     }
   }, [zoomDomain, getVisibleBounds]);
@@ -366,47 +467,37 @@ function TemperatureChart() {
     panRef.current = null;
   }, []);
 
-  // Click-to-show tooltip — use activeIndex to look up the data point directly
-  const handleChartClick = useCallback((chartData) => {
-    if (dragHappenedRef.current) return;
-    const index = chartData?.activeIndex;
-    if (index == null || !chartData.activeCoordinate) {
-      setTooltipState(null);
-      return;
+  // Click-to-show tooltip — find the nearest point to the click position
+  const handleChartClick = useCallback((e) => {
+    if (dragHappenedRef.current) { dragHappenedRef.current = false; return; }
+    const u = plotRef.current;
+    const container = chartContainerRef.current;
+    if (!u || !container || windowData.length === 0) return;
+
+    const overRect = u.over.getBoundingClientRect();
+    if (overRect.width === 0) return;
+    const left = e.clientX - overRect.left;
+    if (left < 0 || left > overRect.width) { setTooltipState(null); return; }
+
+    const xVal = u.posToVal(left, 'x') * 1000; // → epoch ms
+    // Binary search the nearest row by timestamp
+    let lo = 0, hi = windowData.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (windowData[mid].ts < xVal) lo = mid + 1;
+      else hi = mid;
     }
-    const point = displayData[index];
-    if (!point) {
-      setTooltipState(null);
-      return;
-    }
-    // activeCoordinate is in SVG space; the SVG starts after container padding (24px)
+    if (lo > 0 && Math.abs(windowData[lo - 1].ts - xVal) < Math.abs(windowData[lo].ts - xVal)) lo -= 1;
+    const point = windowData[lo];
+    if (!point) { setTooltipState(null); return; }
+
+    const containerRect = container.getBoundingClientRect();
     setTooltipState({
       point,
-      x: chartData.activeCoordinate.x + 24,
-      y: chartData.activeCoordinate.y + 24,
+      x: u.valToPos(point.ts / 1000, 'x') + (overRect.left - containerRect.left),
+      y: e.clientY - containerRect.top,
     });
-  }, [displayData]);
-
-  // Memoized tick/range calculations — avoids getBoundingClientRect on every render
-  const { isSubMinuteZoom, xTicks } = useMemo(() => {
-    if (displayData.length < 2) return { isSubMinuteZoom: false, xTicks: undefined };
-    const first = displayData[0].ts;
-    const last = displayData[displayData.length - 1].ts;
-    const rangeMs = last - first;
-    if (rangeMs < 60000) return { isSubMinuteZoom: true, xTicks: undefined };
-
-    const totalMinutes = rangeMs / 60000;
-    const containerWidth = chartContainerRef.current?.getBoundingClientRect().width ?? 800;
-    const chartWidth = containerWidth - 110;
-    const maxTicks = Math.max(2, Math.floor(chartWidth / 80));
-    const niceSteps = [1, 2, 5, 10, 15, 30, 60];
-    const stepMinutes = niceSteps.find((s) => totalMinutes / s <= maxTicks) ?? 60;
-    const stepMs = stepMinutes * 60000;
-    const firstTick = Math.ceil(first / stepMs) * stepMs;
-    const ticks = [];
-    for (let t = firstTick; t <= last; t += stepMs) ticks.push(t);
-    return { isSubMinuteZoom: false, xTicks: ticks.length > 0 ? ticks : undefined };
-  }, [displayData]);
+  }, [windowData]);
 
   const windowLabel = windowMinutes >= WINDOW_MAX
     ? 'Full session'
@@ -431,7 +522,7 @@ function TemperatureChart() {
                 max={WINDOW_MAX}
                 step={1}
                 value={windowMinutes}
-                onChange={(e) => setWindowMinutes(Number(e.target.value))}
+                onChange={handleWindowChange}
                 className={styles.slider}
                 style={{
                   background: `linear-gradient(to right,
@@ -472,19 +563,19 @@ function TemperatureChart() {
         {visibility.BK && (
           <div className={styles.currentTempItem} style={{ color: theme.vesselBK }}>
             <span className={styles.currentTempLabel}>BK</span>
-            <span className={styles.currentTempValue}>{formatTemp(latest?.BK)}<span className={styles.currentTempUnit}>°C</span></span>
+            <span className={styles.currentTempValue}>{formatTemp(latest?.bk)}<span className={styles.currentTempUnit}>°C</span></span>
           </div>
         )}
         {visibility.MLT && (
           <div className={styles.currentTempItem} style={{ color: theme.vesselMLT }}>
             <span className={styles.currentTempLabel}>MLT</span>
-            <span className={styles.currentTempValue}>{formatTemp(latest?.MLT)}<span className={styles.currentTempUnit}>°C</span></span>
+            <span className={styles.currentTempValue}>{formatTemp(latest?.mlt)}<span className={styles.currentTempUnit}>°C</span></span>
           </div>
         )}
         {visibility.HLT && (
           <div className={styles.currentTempItem} style={{ color: theme.vesselHLT }}>
             <span className={styles.currentTempLabel}>HLT</span>
-            <span className={styles.currentTempValue}>{formatTemp(latest?.HLT)}<span className={styles.currentTempUnit}>°C</span></span>
+            <span className={styles.currentTempValue}>{formatTemp(latest?.hlt)}<span className={styles.currentTempUnit}>°C</span></span>
           </div>
         )}
       </div>
@@ -499,6 +590,7 @@ function TemperatureChart() {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onClick={handleChartClick}
       >
         {zoomDomain && (
           <button
@@ -508,46 +600,16 @@ function TemperatureChart() {
             Reset Zoom
           </button>
         )}
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={displayData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }} onClick={handleChartClick}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis
-              dataKey="ts"
-              type="number"
-              scale="time"
-              domain={['dataMin', 'dataMax']}
-              ticks={xTicks}
-              stroke="#94a3b8"
-              tick={{ fill: '#94a3b8' }}
-              tickLine={{ stroke: '#94a3b8' }}
-              tickFormatter={(ts) => {
-                const d = new Date(ts);
-                if (isSubMinuteZoom) return formatTime(d);
-                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-              }}
-            />
-            <YAxis
-              domain={[0, 100]}
-              stroke="#94a3b8"
-              tick={{ fill: '#94a3b8' }}
-              tickLine={{ stroke: '#94a3b8' }}
-              label={{ value: '°C', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
-            />
-            <Legend wrapperStyle={{ color: '#cbd5e1' }} itemSorter={null} />
-            {visibility.BK && <Line type="linear" dataKey="BK" stroke={theme.vesselBK} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
-            {visibility.MLT && <Line type="linear" dataKey="MLT" stroke={theme.vesselMLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
-            {visibility.HLT && <Line type="linear" dataKey="HLT" stroke={theme.vesselHLT} strokeWidth={2} dot={false} activeDot={false} isAnimationActive={false} />}
-          </LineChart>
-        </ResponsiveContainer>
+        <div ref={plotElRef} className={styles.plotWrap} />
         {tooltipState && (
           <div
             className={styles.clickTooltip}
             style={{ left: tooltipState.x, top: tooltipState.y }}
           >
             <div className={styles.tooltipLabel}>{formatTime(new Date(tooltipState.point.ts))}</div>
-            {visibility.BK && <div style={{ color: theme.vesselBK }}>BK: {Number(tooltipState.point.BK).toFixed(1)} °C</div>}
-            {visibility.MLT && <div style={{ color: theme.vesselMLT }}>MLT: {Number(tooltipState.point.MLT).toFixed(1)} °C</div>}
-            {visibility.HLT && <div style={{ color: theme.vesselHLT }}>HLT: {Number(tooltipState.point.HLT).toFixed(1)} °C</div>}
+            {visibility.BK && <div style={{ color: theme.vesselBK }}>BK: {formatTemp(tooltipState.point.bk)} °C</div>}
+            {visibility.MLT && <div style={{ color: theme.vesselMLT }}>MLT: {formatTemp(tooltipState.point.mlt)} °C</div>}
+            {visibility.HLT && <div style={{ color: theme.vesselHLT }}>HLT: {formatTemp(tooltipState.point.hlt)} °C</div>}
           </div>
         )}
       </div>

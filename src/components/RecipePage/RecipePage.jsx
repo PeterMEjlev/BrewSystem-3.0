@@ -29,18 +29,24 @@ function describeNetworkError(err, fallback) {
   return err?.message || fallback;
 }
 
+// Module-level cache — RecipePage unmounts when leaving the tab, and without
+// this every visit re-walks all pages of the Brewer's Friend API. The list
+// only refetches on the explicit refresh button (which also bypasses the
+// backend's TTL cache).
+let recipesCache = null;
+
 function RecipePage() {
   const panelRef = useRef(null);
   const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false });
 
-  const [recipes, setRecipes] = useState([]);
+  const [recipes, setRecipes] = useState(recipesCache ?? []);
   const [selectedRecipe, setSelectedRecipe] = useState(() => {
     try {
       const saved = sessionStorage.getItem('selectedRecipe');
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(recipesCache == null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
   const [collapsed, setCollapsed] = useState(() => {
@@ -85,16 +91,17 @@ function RecipePage() {
     }
   }, []);
 
-  const fetchRecipes = async () => {
+  const fetchRecipes = async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/recipes');
+      const response = await fetch(force ? '/api/recipes?refresh=1' : '/api/recipes');
       if (!response.ok) {
         throw new Error(await readErrorMessage(response, `Failed to fetch recipes (HTTP ${response.status}).`));
       }
       const data = await response.json();
-      setRecipes(data.recipes || []);
+      recipesCache = data.recipes || [];
+      setRecipes(recipesCache);
     } catch (err) {
       console.error('Error fetching recipes:', err);
       setError(describeNetworkError(err, 'Failed to fetch recipes.'));
@@ -129,8 +136,10 @@ function RecipePage() {
     setError(null);
   };
 
+  // Only hit the network when the module cache is empty (first visit this
+  // app session) — browsing between tabs reuses the cached list.
   useEffect(() => {
-    fetchRecipes();
+    if (recipesCache == null) fetchRecipes();
   }, []);
 
   // Scroll to top when switching views
@@ -546,7 +555,7 @@ function RecipePage() {
     >
       <div className={styles.header}>
         <h2 className={styles.title}>Recipes</h2>
-        <button className={styles.refreshBtn} onClick={() => { playClick(); fetchRecipes(); }} disabled={loading}>
+        <button className={styles.refreshBtn} onClick={() => { playClick(); fetchRecipes(true); }} disabled={loading}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 4v6h-6" />
             <path d="M1 20v-6h6" />

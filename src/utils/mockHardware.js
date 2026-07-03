@@ -4,6 +4,8 @@
  * Designed for future replacement with real GPIO/hardware drivers
  */
 
+import { DEFAULT_AUTO_EFFICIENCY } from './appDefaults';
+
 class MockBrewSystem {
   constructor() {
     // Pot states
@@ -53,6 +55,14 @@ class MockBrewSystem {
     };
     this.tickCount = 0;
 
+    // Auto-efficiency config — mirrors the backend regulation loop so dev
+    // mode behaves like production (regulation is backend-authoritative).
+    // Kept live via setRegulationConfig, seeded with defaults until then.
+    this.regulationConfig = {
+      BK:  { enabled: DEFAULT_AUTO_EFFICIENCY.bk.enabled,  steps: DEFAULT_AUTO_EFFICIENCY.bk.steps },
+      HLT: { enabled: DEFAULT_AUTO_EFFICIENCY.hlt.enabled, steps: DEFAULT_AUTO_EFFICIENCY.hlt.steps },
+    };
+
     // Start simulation loop
     this.startSimulation();
   }
@@ -71,16 +81,49 @@ class MockBrewSystem {
 
   updateTemperatures() {
     this.tickCount++;
+    this.simulateRegulation('BK');
+    this.simulateRegulation('HLT');
     this.simulatePotTemperature('BK');
     this.simulatePotTemperature('HLT');
     this.simulatePotTemperature('MLT');
+  }
+
+  // Called from the UI whenever settings change so dev mode picks up new
+  // auto-efficiency config in the same session, exactly like the backend.
+  setRegulationConfig(config) {
+    if (config.BK) this.regulationConfig.BK = config.BK;
+    if (config.HLT) this.regulationConfig.HLT = config.HLT;
+  }
+
+  // Mirrors the backend regulation tick: walk the steps to pick a power level,
+  // turn the heater off once the set value is reached.
+  simulateRegulation(potName) {
+    const pot = this.pots[potName];
+    if (!pot.regulationEnabled) return;
+    const diff = pot.sv - pot.pv;
+    if (diff <= 0) {
+      pot.heaterOn = false;
+      return;
+    }
+    const { enabled, steps } = this.regulationConfig[potName];
+    if (!enabled) {
+      // Manual-efficiency regulation: bang-bang at the user-chosen duty
+      pot.heaterOn = true;
+      return;
+    }
+    let power = steps[steps.length - 1].power;
+    for (const step of steps.slice(0, -1)) {
+      if (diff > step.threshold) { power = step.power; break; }
+    }
+    pot.heaterOn = true;
+    pot.efficiency = power;
   }
 
   simulatePotTemperature(potName) {
     const pot = this.pots[potName];
     let tempChange = 0;
 
-    if (potName !== 'MLT' && pot.heaterOn && pot.regulationEnabled) {
+    if (potName !== 'MLT' && pot.heaterOn) {
       // Heating
       const efficiencyFactor = pot.efficiency / 100;
       tempChange += this.heatingRate * efficiencyFactor;

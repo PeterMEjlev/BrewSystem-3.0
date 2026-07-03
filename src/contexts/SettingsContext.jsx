@@ -1,32 +1,36 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import {
+  DEFAULT_AUTO_EFFICIENCY,
+  DEFAULT_BK_ELEMENT_WATTS,
+  DEFAULT_HLT_ELEMENT_WATTS,
+} from '../utils/appDefaults';
 
 const SettingsContext = createContext(null);
 
 const APP_DEFAULTS = {
   max_watts: 11000,
-  max_chart_points: 500,
+  bk_element_watts: DEFAULT_BK_ELEMENT_WATTS,
+  hlt_element_watts: DEFAULT_HLT_ELEMENT_WATTS,
   cursor_visibility: 'auto',
   brewing_panel_poll_seconds: 1,
 };
 
-const FALLBACK_REG_STEPS = [
-  { threshold: 5,   power: 100 },
-  { threshold: 2,   power: 60  },
-  { threshold: 0.5, power: 30  },
-  { threshold: 0,   power: 0   },
-];
+export const FALLBACK_AUTO_EFFICIENCY = DEFAULT_AUTO_EFFICIENCY;
 
-export const FALLBACK_AUTO_EFFICIENCY = {
-  enabled: true,
-  bk:  { steps: FALLBACK_REG_STEPS },
-  hlt: { steps: FALLBACK_REG_STEPS },
-};
+// Trailing debounce for config writes — collapses slider/color-picker drags
+// (dozens of change events per second) into a single SD-card write.
+const PERSIST_DEBOUNCE_MS = 500;
 
 export function SettingsProvider({ children }) {
   const [settings, setSettingsState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState('');
   const saveTimer = useRef(null);
+  // Mirror of the latest settings — lets updateSettings compute the next
+  // value outside the React state updater (updaters must stay side-effect
+  // free; React may invoke them more than once).
+  const settingsRef = useRef(null);
+  const persistTimer = useRef(null);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -34,6 +38,7 @@ export function SettingsProvider({ children }) {
       if (!response.ok) throw new Error('Failed to fetch settings');
       const data = await response.json();
       data.app = { ...APP_DEFAULTS, ...data.app };
+      settingsRef.current = data;
       setSettingsState(data);
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -65,23 +70,29 @@ export function SettingsProvider({ children }) {
     }
   }, []);
 
-  // Single setter the UI uses for all writes — updates state and persists.
+  // Single setter the UI uses for all writes — updates state immediately and
+  // persists on a trailing debounce (rapid changes collapse into one write).
   const updateSettings = useCallback((updaterOrValue) => {
-    setSettingsState((prev) => {
-      const next = typeof updaterOrValue === 'function' ? updaterOrValue(prev) : updaterOrValue;
-      persist(next);
-      return next;
-    });
+    const prev = settingsRef.current;
+    const next = typeof updaterOrValue === 'function' ? updaterOrValue(prev) : updaterOrValue;
+    settingsRef.current = next;
+    setSettingsState(next);
+    setSaveStatus('Saving...');
+    clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => persist(settingsRef.current), PERSIST_DEBOUNCE_MS);
   }, [persist]);
 
   // Reset to factory defaults — backend rewrites config.json from config.default.json.
   const resetSettings = useCallback(async () => {
+    // Cancel any pending debounced write so it can't overwrite the reset
+    clearTimeout(persistTimer.current);
     setSaveStatus('Resetting...');
     try {
       const response = await fetch('/api/settings/reset', { method: 'POST' });
       if (!response.ok) throw new Error('Failed to reset settings');
       const data = await response.json();
       data.app = { ...APP_DEFAULTS, ...data.app };
+      settingsRef.current = data;
       setSettingsState(data);
       setSaveStatus('Reset to defaults ✓');
       clearTimeout(saveTimer.current);

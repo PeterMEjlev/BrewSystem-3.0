@@ -259,6 +259,9 @@ function Settings() {
   };
 
   const updateEfficiencyStep = (potKey, index, field, value) => {
+    // A cleared input parses to NaN, which JSON-serializes to null and makes
+    // the backend reject the whole settings write — keep the last valid value.
+    if (typeof value === 'number' && isNaN(value)) return;
     updateSettings((prev) => {
       const newSteps = prev.app.auto_efficiency[potKey].steps.map((s, i) =>
         i === index ? { ...s, [field]: value } : s
@@ -330,58 +333,73 @@ function Settings() {
   const bkSteps = settings.app.auto_efficiency.bk?.steps ?? [];
   const hltSteps = settings.app.auto_efficiency.hlt?.steps ?? [];
 
-  const renderThresholdTable = (label, potKey, steps) => (
-    <div className={styles.thresholdColumn}>
-      <div className={styles.thresholdColumnTitle}>{label}</div>
-      <div className={styles.thresholdTable}>
-        <div className={styles.thresholdHeader}>
-          <span>Condition</span>
-          <span>Power</span>
-        </div>
-        {steps.slice(0, -1).map((step, i) => (
-          <div key={i} className={styles.thresholdRow}>
-            <span className={styles.thresholdLabel}>diff &gt;</span>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={step.threshold}
-              onChange={(e) => updateEfficiencyStep(potKey, i, 'threshold', parseFloat(e.target.value))}
-              className={styles.thresholdInput}
-            />
-            <span className={styles.thresholdLabel}>°C</span>
-            <span className={styles.thresholdArrow}>→</span>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              value={step.power}
-              onChange={(e) => updateEfficiencyStep(potKey, i, 'power', parseFloat(e.target.value))}
-              className={styles.thresholdInput}
-            />
-            <span className={styles.thresholdLabel}>%</span>
-          </div>
-        ))}
-        {steps.length > 0 && (
-          <div className={styles.thresholdRow}>
-            <span className={`${styles.thresholdLabel} ${styles.thresholdElse}`}>else</span>
-            <span className={styles.thresholdArrow}>→</span>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              value={steps[steps.length - 1].power}
-              onChange={(e) => updateEfficiencyStep(potKey, steps.length - 1, 'power', parseFloat(e.target.value))}
-              className={styles.thresholdInput}
-            />
-            <span className={styles.thresholdLabel}>%</span>
+  const renderThresholdTable = (label, potKey, steps) => {
+    const enabled = settings.app.auto_efficiency[potKey]?.enabled ?? true;
+    return (
+      <div className={styles.thresholdColumn}>
+        <div className={styles.thresholdColumnTitle}>{label}</div>
+        <label className={styles.toggleLabel}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => updateSetting(`app.auto_efficiency.${potKey}.enabled`, e.target.checked)}
+            className={styles.toggleInput}
+          />
+          <span className={styles.toggleSlider}></span>
+          <span className={styles.toggleText}>{enabled ? 'On' : 'Off'}</span>
+        </label>
+        {enabled && (
+          <div className={styles.thresholdTable}>
+            <div className={styles.thresholdHeader}>
+              <span>Condition</span>
+              <span>Power</span>
+            </div>
+            {steps.slice(0, -1).map((step, i) => (
+              <div key={i} className={styles.thresholdRow}>
+                <span className={styles.thresholdLabel}>diff &gt;</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={step.threshold}
+                  onChange={(e) => updateEfficiencyStep(potKey, i, 'threshold', parseFloat(e.target.value))}
+                  className={styles.thresholdInput}
+                />
+                <span className={styles.thresholdLabel}>°C</span>
+                <span className={styles.thresholdArrow}>→</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={step.power}
+                  onChange={(e) => updateEfficiencyStep(potKey, i, 'power', parseFloat(e.target.value))}
+                  className={styles.thresholdInput}
+                />
+                <span className={styles.thresholdLabel}>%</span>
+              </div>
+            ))}
+            {steps.length > 0 && (
+              <div className={styles.thresholdRow}>
+                <span className={`${styles.thresholdLabel} ${styles.thresholdElse}`}>else</span>
+                <span className={styles.thresholdArrow}>→</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={steps[steps.length - 1].power}
+                  onChange={(e) => updateEfficiencyStep(potKey, steps.length - 1, 'power', parseFloat(e.target.value))}
+                  className={styles.thresholdInput}
+                />
+                <span className={styles.thresholdLabel}>%</span>
+              </div>
+            )}
           </div>
         )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const resetButton = (
     <button className={styles.resetAllBtn} onClick={() => { playClick(); handleResetAllSettings(); }}>
@@ -442,6 +460,28 @@ function Settings() {
             </div>
 
             <div className={styles.inputGroup}>
+              <label>BK Element Power (W):</label>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={settings.app.bk_element_watts}
+                onChange={(e) => updateSetting('app.bk_element_watts', parseInt(e.target.value))}
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label>HLT Element Power (W):</label>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={settings.app.hlt_element_watts}
+                onChange={(e) => updateSetting('app.hlt_element_watts', parseInt(e.target.value))}
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
               <label>Chart Logging Frequency (seconds):</label>
               <input
                 type="number"
@@ -462,17 +502,6 @@ function Settings() {
             </div>
 
             <div className={styles.inputGroup}>
-              <label>Max Chart Points:</label>
-              <input
-                type="number"
-                min="50"
-                step="50"
-                value={settings.app.max_chart_points}
-                onChange={(e) => updateSetting('app.max_chart_points', parseInt(e.target.value))}
-              />
-            </div>
-
-            <div className={styles.inputGroup}>
               <label>Cursor Visibility:</label>
               <select
                 value={settings.app.cursor_visibility || 'auto'}
@@ -487,28 +516,10 @@ function Settings() {
 
             <div className={styles.subsectionTitle}>Auto Efficiency Control</div>
 
-            <div className={styles.inputGroup}>
-              <label>Enabled:</label>
-              <label className={styles.toggleLabel}>
-                <input
-                  type="checkbox"
-                  checked={settings.app.auto_efficiency.enabled}
-                  onChange={(e) => updateSetting('app.auto_efficiency.enabled', e.target.checked)}
-                  className={styles.toggleInput}
-                />
-                <span className={styles.toggleSlider}></span>
-                <span className={styles.toggleText}>
-                  {settings.app.auto_efficiency.enabled ? 'On' : 'Off'}
-                </span>
-              </label>
+            <div className={styles.thresholdGrid}>
+              {renderThresholdTable(`BK (${(settings.app.bk_element_watts / 1000).toFixed(1)} kW)`, 'bk', bkSteps)}
+              {renderThresholdTable(`HLT (${(settings.app.hlt_element_watts / 1000).toFixed(1)} kW)`, 'hlt', hltSteps)}
             </div>
-
-            {settings.app.auto_efficiency.enabled && (
-              <div className={styles.thresholdGrid}>
-                {renderThresholdTable('BK (8.5 kW)', 'bk', bkSteps)}
-                {renderThresholdTable('HLT (5.5 kW)', 'hlt', hltSteps)}
-              </div>
-            )}
           </div>
         )}
 

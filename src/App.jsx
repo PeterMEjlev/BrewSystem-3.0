@@ -56,13 +56,15 @@ function AppShell() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <SettingsProvider>
+    // SettingsProvider outermost — it owns the single /api/settings fetch that
+    // ThemeProvider (and everything else) reads from.
+    <SettingsProvider>
+      <ThemeProvider>
         <BruceHistoryProvider>
           <AppShell />
         </BruceHistoryProvider>
-      </SettingsProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </SettingsProvider>
   );
 }
 

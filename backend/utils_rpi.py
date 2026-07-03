@@ -1,8 +1,10 @@
 import json
+import logging
 import random
-import time
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Auto-detect Raspberry Pi by attempting pigpio connection
 try:
@@ -30,22 +32,22 @@ def set_gpio_high(pin_number):
     if IS_RPI:
         try:
             pi.write(pin_number, 1)
-            print(f"GPIO pin {pin_number} set to HIGH.")
+            logger.debug("GPIO pin %s set to HIGH.", pin_number)
         except Exception as e:
-            print(f"Error setting GPIO pin {pin_number} HIGH: {e}")
+            logger.error("Error setting GPIO pin %s HIGH: %s", pin_number, e)
     else:
-        print(f"GPIO pin {pin_number} set to HIGH (simulated).")
+        logger.debug("GPIO pin %s set to HIGH (simulated).", pin_number)
 
 
 def set_gpio_low(pin_number):
     if IS_RPI:
         try:
             pi.write(pin_number, 0)
-            print(f"GPIO pin {pin_number} set to LOW.")
+            logger.debug("GPIO pin %s set to LOW.", pin_number)
         except Exception as e:
-            print(f"Error setting GPIO pin {pin_number} LOW: {e}")
+            logger.error("Error setting GPIO pin %s LOW: %s", pin_number, e)
     else:
-        print(f"GPIO pin {pin_number} set to LOW (simulated).")
+        logger.debug("GPIO pin %s set to LOW (simulated).", pin_number)
 
 
 def set_pwm_signal(pin_number, frequency, duty_cycle):
@@ -56,21 +58,21 @@ def set_pwm_signal(pin_number, frequency, duty_cycle):
             try:
                 pi.hardware_PWM(pin_number, frequency, duty_hw)
                 _pwm_objects[pin_number] = ('hardware', frequency)
-                print(f"Started hardware PWM on pin {pin_number}, freq={frequency}Hz, duty={duty_cycle}%.")
+                logger.debug("Started hardware PWM on pin %s, freq=%sHz, duty=%s%%.", pin_number, frequency, duty_cycle)
             except pigpio.error:
-                print(f"Hardware PWM not available on pin {pin_number}, falling back to software PWM.")
+                logger.warning("Hardware PWM not available on pin %s, falling back to software PWM.", pin_number)
                 pi.set_PWM_frequency(pin_number, frequency)
                 pi.set_PWM_range(pin_number, 100)
                 pi.set_PWM_dutycycle(pin_number, duty_cycle)
                 _pwm_objects[pin_number] = ('software', frequency)
-                print(f"Started software PWM on pin {pin_number}, freq={frequency}Hz, duty={duty_cycle}%.")
+                logger.debug("Started software PWM on pin %s, freq=%sHz, duty=%s%%.", pin_number, frequency, duty_cycle)
             return pin_number
         except Exception as e:
-            print(f"Failed to start PWM on pin {pin_number}: {e}")
+            logger.error("Failed to start PWM on pin %s: %s", pin_number, e)
             return None
     else:
         _pwm_objects[pin_number] = ('software', frequency)
-        print(f"PWM started on pin {pin_number} (simulated), freq={frequency}, duty={duty_cycle}%.")
+        logger.debug("PWM started on pin %s (simulated), freq=%s, duty=%s%%.", pin_number, frequency, duty_cycle)
         return pin_number
 
 
@@ -82,13 +84,13 @@ def stop_pwm_signal(pin_number):
                 pi.hardware_PWM(pin_number, 0, 0)
             elif mode == 'software':
                 pi.set_PWM_dutycycle(pin_number, 0)
-            print(f"Stopped {mode} PWM on pin {pin_number}.")
+            logger.debug("Stopped %s PWM on pin %s.", mode, pin_number)
             _pwm_objects.pop(pin_number, None)
         except Exception as e:
-            print(f"Error stopping PWM on pin {pin_number}: {e}")
+            logger.error("Error stopping PWM on pin %s: %s", pin_number, e)
     else:
         _pwm_objects.pop(pin_number, None)
-        print(f"PWM stopped on pin {pin_number} (simulated or not started).")
+        logger.debug("PWM stopped on pin %s (simulated or not started).", pin_number)
 
 
 def change_pwm_duty_cycle(pin_number, duty_cycle):
@@ -100,11 +102,11 @@ def change_pwm_duty_cycle(pin_number, duty_cycle):
                 pi.hardware_PWM(pin_number, frequency, duty_hw)
             elif mode == 'software':
                 pi.set_PWM_dutycycle(pin_number, duty_cycle)
-            print(f"{mode.capitalize()} PWM duty cycle on pin {pin_number} changed to {duty_cycle}%")
+            logger.debug("%s PWM duty cycle on pin %s changed to %s%%", mode.capitalize(), pin_number, duty_cycle)
         except Exception as e:
-            print(f"Error changing PWM duty cycle on pin {pin_number} to {duty_cycle}%: {e}")
+            logger.error("Error changing PWM duty cycle on pin %s to %s%%: %s", pin_number, duty_cycle, e)
     else:
-        print(f"Simulated PWM duty cycle change on pin {pin_number} to {duty_cycle}%")
+        logger.debug("Simulated PWM duty cycle change on pin %s to %s%%", pin_number, duty_cycle)
 
 
 def initialize_ds18b20_resolution(serial_code, resolution="9"):
@@ -115,17 +117,19 @@ def initialize_ds18b20_resolution(serial_code, resolution="9"):
             try:
                 with open(resolution_file, "w") as f:
                     f.write(resolution)
-                print(f"Sensor {serial_code} resolution set to {resolution}-bit.")
+                logger.info("Sensor %s resolution set to %s-bit.", serial_code, resolution)
             except Exception as e:
-                print(f"Warning: Unable to set sensor {serial_code} resolution: {e}")
+                logger.warning("Unable to set sensor %s resolution: %s", serial_code, e)
         else:
-            print(f"Resolution file for sensor {serial_code} not found.")
+            logger.warning("Resolution file for sensor %s not found.", serial_code)
 
 
 def read_ds18b20(serial_code):
+    """Read one DS18B20 sensor. Returns °C as float, or None on any failure
+    (disconnected probe, CRC error, missing sysfs entry). Callers must treat
+    None as 'no reading' — never as a temperature."""
     if IS_RPI:
         sensor_file_path = f"/sys/bus/w1/devices/{serial_code}/w1_slave"
-        start_time = time.time()
         try:
             with open(sensor_file_path, 'r') as f:
                 lines = f.readlines()
@@ -136,15 +140,12 @@ def read_ds18b20(serial_code):
             temp_output = lines[1].split("t=")
             if len(temp_output) < 2:
                 raise ValueError("Temperature data not found.")
-            temp_c = float(temp_output[1]) / 1000.0
-            end_time = time.time()
-            #print(f"read_ds18b20 time: {end_time - start_time:.3f}s")
-            return temp_c
+            return float(temp_output[1]) / 1000.0
         except FileNotFoundError:
-            return -1.0
+            return None
         except Exception as e:
-            print(f"Error reading DS18B20: {e}")
-            return -1.0
+            logger.error("Error reading DS18B20 %s: %s", serial_code, e)
+            return None
     else:
         return round(random.uniform(20.0, 30.0), 1)
 
@@ -178,8 +179,8 @@ def initialize_gpio():
             for pin in pins:
                 pi.set_mode(pin, pigpio.OUTPUT)
                 pi.write(pin, 0)
-            print("GPIO pins initialized with pigpio.")
+            logger.info("GPIO pins initialized with pigpio.")
         except Exception as e:
-            print(f"Error initializing GPIO with pigpio: {e}")
+            logger.error("Error initializing GPIO with pigpio: %s", e)
     else:
-        print(f"GPIO initialization skipped (simulated). Pins: {pins}")
+        logger.info("GPIO initialization skipped (simulated). Pins: %s", pins)

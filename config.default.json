@@ -33,11 +33,13 @@
     "log_interval_seconds": 5,
     "brewing_panel_poll_seconds": 1,
     "max_watts": 11000,
+    "bk_element_watts": 8500,
+    "hlt_element_watts": 5000,
     "max_chart_points": 150,
     "cursor_visibility": "auto",
     "auto_efficiency": {
-      "enabled": true,
       "bk": {
+        "enabled": true,
         "steps": [
           { "threshold": 5.0, "power": 100.0 },
           { "threshold": 2.0, "power": 60.0 },
@@ -46,6 +48,7 @@
         ]
       },
       "hlt": {
+        "enabled": true,
         "steps": [
           { "threshold": 5.0, "power": 100.0 },
           { "threshold": 2.0, "power": 75.0 },

@@ -5,7 +5,6 @@ import os
 import tempfile
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -33,17 +32,24 @@ class _SuppressPollingFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_SuppressPollingFilter())
 
 
-# Temperature cache — updated by background task, served instantly from the API
-_temperature_cache: Dict[str, float] = {"bk": -1.0, "mlt": -1.0, "hlt": -1.0}
+# Temperature cache — updated by background task, served instantly from the API.
+# None means "no valid reading" (sensor missing/failed) — never a temperature.
+_temperature_cache: Dict[str, Optional[float]] = {"bk": None, "mlt": None, "hlt": None}
+
+# Monotonic timestamp of the last completed sensor sweep — the watchdog uses
+# this to detect a stalled read loop and force heaters off.
+_last_read_time: float = 0.0
 
 
 async def _temperature_read_loop():
-    """Background task: continuously read all sensors and update the in-memory cache.
+    """Background task: continuously read all sensors and update the in-memory cache,
+    then run one regulation pass so heater control lives here — not in the browser.
 
     Sensor reads are offloaded to a thread so the event loop stays responsive.
     At 10-bit resolution each sensor takes ~188 ms, so a sequential 3-sensor
     read takes ~565 ms — comfortably inside the 1 s loop period.
     """
+    global _last_read_time
     logger = logging.getLogger(__name__)
     loop_period = 1.0
     while True:
@@ -53,10 +59,39 @@ async def _temperature_read_loop():
             sensors = config["sensors"]["ds18b20"]
             temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
             _temperature_cache.update(temps)
+            _last_read_time = time.monotonic()
+            _regulation_tick(config)
         except Exception as e:
-            logger.error("Temp read error: %s", e)
+            logger.error("Temp read/regulation error: %s", e)
         elapsed = time.monotonic() - start
         await asyncio.sleep(max(0.05, loop_period - elapsed))
+
+
+# Dead-man's switch: if the read loop stalls this long, heaters run blind.
+_SENSOR_STALE_SECONDS = 10.0
+
+
+async def _safety_watchdog_loop():
+    """Independent task: force all heaters off if the sensor loop stops updating.
+
+    Runs separately from the read loop on purpose — if that loop crashes or
+    blocks, this one still fires.
+    """
+    logger = logging.getLogger(__name__)
+    while True:
+        await asyncio.sleep(2.0)
+        try:
+            if _last_read_time and (time.monotonic() - _last_read_time) > _SENSOR_STALE_SECONDS:
+                config = read_config()
+                for pot in ("BK", "HLT"):
+                    if _control_state["pots"][pot]["heaterOn"]:
+                        logger.error(
+                            "Sensor loop stalled >%ss — forcing %s heater OFF",
+                            _SENSOR_STALE_SECONDS, pot,
+                        )
+                        _apply_pot_power(pot, False, config)
+        except Exception as e:
+            logger.error("Watchdog error: %s", e)
 
 
 async def _temperature_log_loop():
@@ -82,16 +117,21 @@ def _normalize_config():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _normalize_config()
+    # GPIO init happens exactly once, here — NOT from the frontend. A browser
+    # reload mid-brew must never touch relay state.
+    utils_rpi.initialize_gpio()
     session_logger.start_new_session()
     sensors = read_config()["sensors"]["ds18b20"]
     for serial in sensors.values():
         utils_rpi.initialize_ds18b20_resolution(serial, resolution="10")
     read_task = asyncio.create_task(_temperature_read_loop())
     log_task = asyncio.create_task(_temperature_log_loop())
+    watchdog_task = asyncio.create_task(_safety_watchdog_loop())
     yield
     read_task.cancel()
     log_task.cancel()
-    for task in (read_task, log_task):
+    watchdog_task.cancel()
+    for task in (read_task, log_task, watchdog_task):
         try:
             await task
         except asyncio.CancelledError:
@@ -147,6 +187,7 @@ class AutoEfficiencyStep(BaseModel):
 
 
 class PotAutoEfficiency(BaseModel):
+    enabled: bool = True
     steps: list[AutoEfficiencyStep]
 
 
@@ -160,7 +201,7 @@ def _bk_default_steps() -> "PotAutoEfficiency":
 
 
 def _hlt_default_steps() -> "PotAutoEfficiency":
-    # HLT element is weaker (5.5 kW vs BK's 8.5 kW) so it ramps harder near setpoint.
+    # HLT element is weaker than BK's (see hlt_element_watts) so it ramps harder near setpoint.
     return PotAutoEfficiency(steps=[
         AutoEfficiencyStep(threshold=5,   power=100),
         AutoEfficiencyStep(threshold=2,   power=75),
@@ -170,7 +211,6 @@ def _hlt_default_steps() -> "PotAutoEfficiency":
 
 
 class AutoEfficiencySettings(BaseModel):
-    enabled: bool = True
     bk: PotAutoEfficiency = Field(default_factory=_bk_default_steps)
     hlt: PotAutoEfficiency = Field(default_factory=_hlt_default_steps)
 
@@ -181,6 +221,12 @@ class AppSettings(BaseModel):
     log_interval_seconds: int = 10
     brewing_panel_poll_seconds: int = 1
     max_watts: int = 11000
+    # Rated power of each heating element — single source of truth; the
+    # frontend and Bruce read these via /api/settings.
+    bk_element_watts: int = 8500
+    hlt_element_watts: int = 5000
+    # Legacy — the uPlot canvas chart renders all points; kept so existing
+    # config.json files keep validating.
     max_chart_points: int = 150
     auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
 
@@ -223,6 +269,15 @@ def read_config() -> Dict[str, Any]:
             return _config_cache
         except (FileNotFoundError, json.JSONDecodeError, KeyError):
             pass  # fall through; Pydantic defaults will fill the gap
+
+    # Legacy migration: `enabled` used to be one global flag on auto_efficiency,
+    # now it is per-pot.  Propagate the old flag into pots that predate it so a
+    # user who had auto-efficiency off doesn't get it silently re-enabled.
+    if "enabled" in ae:
+        for pot_key in ("bk", "hlt"):
+            pot_ae = ae.get(pot_key)
+            if isinstance(pot_ae, dict):
+                pot_ae.setdefault("enabled", ae["enabled"])
 
     _config_cache = data
     return _config_cache
@@ -284,16 +339,16 @@ async def update_settings(settings: Settings) -> Dict[str, str]:
 
 class TimerActionRequest(BaseModel):
     action: str  # "start", "stop", "reset", "set"
-    seconds: Optional[int] = None  # target seconds for "set" action
+    seconds: Optional[int] = Field(default=None, ge=0)  # target seconds for "set" action
 
 class PotPowerRequest(BaseModel):
     on: bool
 
 class PotEfficiencyRequest(BaseModel):
-    value: float
+    value: float = Field(ge=0, le=100)  # PWM duty cycle %
 
 class PotSvRequest(BaseModel):
-    value: float
+    value: float = Field(ge=0, le=110)  # target °C
 
 class PotRegulationRequest(BaseModel):
     enabled: bool
@@ -302,7 +357,7 @@ class PumpPowerRequest(BaseModel):
     on: bool
 
 class PumpSpeedRequest(BaseModel):
-    value: float
+    value: float = Field(ge=0, le=100)  # PWM duty cycle %
 
 
 def _pot_pin_map(pot: str, config: Dict[str, Any]):
@@ -321,6 +376,167 @@ def _pump_pin_map(pump: str, config: Dict[str, Any]):
     pwm_pin = config["gpio"]["pwm_pump"][pump_lower]
     frequency = config["pwm"]["software_frequency"]
     return relay_pin, pwm_pin, frequency
+
+
+# Absolute over-temperature cutoff — heaters are forced off above this
+# regardless of regulation mode or set value.
+_MAX_TEMP_CUTOFF_C = 105.0
+
+
+def _element_watts(config: Dict[str, Any]) -> tuple:
+    """Return (bk_watts, hlt_watts) from config, falling back to model defaults."""
+    app_cfg = config.get("app", {})
+    return (
+        app_cfg.get("bk_element_watts", 8500),
+        app_cfg.get("hlt_element_watts", 5000),
+    )
+
+
+def _apply_efficiency(pot: str, value: float, config: Dict[str, Any]) -> None:
+    """Apply a heating-element duty cycle, enforcing the system power limit.
+
+    Single writer for pot PWM: used by the efficiency endpoint, power-on
+    restore, and the backend regulation loop, so state and hardware can
+    never disagree. When both regulations are enabled BK has priority —
+    HLT yields to fit the remaining headroom.
+    """
+    max_watts = config.get("app", {}).get("max_watts", 11000)
+    bk_watts, hlt_watts = _element_watts(config)
+    other = "HLT" if pot == "BK" else "BK"
+    pot_max = bk_watts if pot == "BK" else hlt_watts
+    other_max = hlt_watts if pot == "BK" else bk_watts
+
+    both_regs = (
+        _control_state["pots"]["BK"]["regulationEnabled"]
+        and _control_state["pots"]["HLT"]["regulationEnabled"]
+    )
+
+    _, pwm_pin, _ = _pot_pin_map(pot, config)
+
+    if both_regs and pot == "HLT":
+        # BK has priority: cap HLT to fit within remaining headroom after BK
+        bk_used = (_control_state["pots"]["BK"]["efficiency"] / 100) * bk_watts
+        hlt_cap = max(0, min(100, ((max_watts - bk_used) / hlt_watts) * 100))
+        capped = min(value, hlt_cap)
+        _control_state["pots"]["HLT"]["efficiency"] = capped
+        utils_rpi.change_pwm_duty_cycle(pwm_pin, capped)
+    else:
+        # Never let a single pot exceed the system limit on its own
+        self_cap = max(0, min(100, (max_watts / pot_max) * 100))
+        value = min(value, self_cap)
+        _control_state["pots"][pot]["efficiency"] = value
+        utils_rpi.change_pwm_duty_cycle(pwm_pin, value)
+
+        # Throttle the other pot if both heaters are on and total power exceeds the limit
+        if _control_state["pots"][other]["heaterOn"]:
+            used_by_this = (value / 100) * pot_max if _control_state["pots"][pot]["heaterOn"] else 0
+            headroom = max_watts - used_by_this
+            other_cap = max(0, min(100, (headroom / other_max) * 100))
+            other_eff = _control_state["pots"][other]["efficiency"]
+            if other_eff > other_cap:
+                _, other_pwm, _ = _pot_pin_map(other, config)
+                _control_state["pots"][other]["efficiency"] = other_cap
+                utils_rpi.change_pwm_duty_cycle(other_pwm, other_cap)
+
+
+def _apply_pot_power(pot: str, on: bool, config: Dict[str, Any]) -> None:
+    """Switch a pot's relay and keep PWM output consistent with stored state.
+
+    On power-on the stored efficiency is re-applied (through the power-limit
+    capping), matching pump behaviour — previously the element silently ran
+    at 0 % while the UI showed the old duty cycle.
+    """
+    relay_pin, pwm_pin, frequency = _pot_pin_map(pot, config)
+    _control_state["pots"][pot]["heaterOn"] = on
+    if on:
+        utils_rpi.set_gpio_high(relay_pin)
+        utils_rpi.set_pwm_signal(pwm_pin, frequency, 0)
+        _apply_efficiency(pot, _control_state["pots"][pot]["efficiency"], config)
+    else:
+        utils_rpi.set_gpio_low(relay_pin)
+        utils_rpi.stop_pwm_signal(pwm_pin)
+
+
+def _walk_steps(steps: list, diff: float) -> float:
+    """Map a temperature deficit onto a power level using the config steps."""
+    if not steps:
+        return 0.0
+    power = steps[-1].get("power", 0)
+    for step in steps[:-1]:
+        if diff > step.get("threshold", 0):
+            power = step.get("power", 0)
+            break
+    return float(power)
+
+
+def _regulation_tick(config: Dict[str, Any]) -> None:
+    """One regulation pass, called from the 1 s sensor loop.
+
+    This is the authoritative control loop — the UI only displays state. If
+    the browser crashes mid-brew, this keeps throttling heaters toward their
+    set values. Safety rules (applied regardless of regulation mode):
+    over-temperature forces a heater off; a failed sensor forces a heater off
+    when it is under regulation (regulating blind would mean full power).
+    """
+    logger = logging.getLogger(__name__)
+    app_cfg = config.get("app", {})
+    ae = app_cfg.get("auto_efficiency", {})
+    max_watts = app_cfg.get("max_watts", 11000)
+    bk_watts, hlt_watts = _element_watts(config)
+
+    # BK first — it has priority under the shared power cap.
+    for pot in ("BK", "HLT"):
+        state = _control_state["pots"][pot]
+        pv = _temperature_cache.get(pot.lower())
+
+        # Hard over-temp cutoff, even in fully manual mode
+        if state["heaterOn"] and pv is not None and pv >= _MAX_TEMP_CUTOFF_C:
+            logger.warning("%s over-temp (%.1f°C ≥ %.1f°C) — forcing heater OFF",
+                           pot, pv, _MAX_TEMP_CUTOFF_C)
+            _apply_pot_power(pot, False, config)
+            continue
+
+        if not state["regulationEnabled"]:
+            continue
+
+        if pv is None:
+            if state["heaterOn"]:
+                logger.warning("%s sensor read failed while regulating — forcing heater OFF", pot)
+                _apply_pot_power(pot, False, config)
+            continue
+
+        diff = state["sv"] - pv
+        if diff <= 0:
+            if state["heaterOn"]:
+                _apply_pot_power(pot, False, config)
+            continue
+
+        pot_ae = ae.get(pot.lower()) or {}
+        if pot_ae.get("enabled", True):
+            steps = pot_ae.get("steps") or []
+            target = _walk_steps(steps, diff) if steps else state["efficiency"]
+        else:
+            # Manual-efficiency regulation: bang-bang at the user-chosen duty
+            target = state["efficiency"]
+
+        # Pre-compute the capped value so unchanged ticks skip hardware writes
+        both_regs = (
+            _control_state["pots"]["BK"]["regulationEnabled"]
+            and _control_state["pots"]["HLT"]["regulationEnabled"]
+        )
+        if pot == "HLT" and both_regs:
+            bk_used = (_control_state["pots"]["BK"]["efficiency"] / 100) * bk_watts
+            cap = max(0, min(100, ((max_watts - bk_used) / hlt_watts) * 100))
+        else:
+            pot_max = bk_watts if pot == "BK" else hlt_watts
+            cap = max(0, min(100, (max_watts / pot_max) * 100))
+        target = min(target, cap)
+
+        if not state["heaterOn"]:
+            state["efficiency"] = target
+            _apply_pot_power(pot, True, config)
+        elif state["efficiency"] != target:
+            _apply_efficiency(pot, target, config)
 
 
 @app.post("/api/hardware/initialize")
@@ -343,24 +559,8 @@ async def set_pot_power(pot: str, body: PotPowerRequest) -> Dict[str, str]:
     pot = pot.upper()
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
-
-    config = read_config()
-    relay_pin, pwm_pin, frequency = _pot_pin_map(pot, config)
-
-    _control_state["pots"][pot]["heaterOn"] = body.on
-    if body.on:
-        utils_rpi.set_gpio_high(relay_pin)
-        utils_rpi.set_pwm_signal(pwm_pin, frequency, 0)
-    else:
-        utils_rpi.set_gpio_low(relay_pin)
-        utils_rpi.stop_pwm_signal(pwm_pin)
-
+    _apply_pot_power(pot, body.on, read_config())
     return {"status": "ok"}
-
-
-# Max wattage per heating element
-_BK_MAX_WATTS = 8500
-_HLT_MAX_WATTS = 5000
 
 
 @app.post("/api/hardware/pot/{pot}/efficiency")
@@ -369,44 +569,7 @@ async def set_pot_efficiency(pot: str, body: PotEfficiencyRequest) -> Dict[str, 
     pot = pot.upper()
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
-
-    config = read_config()
-    max_watts = config.get("app", {}).get("max_watts", 11000)
-    other = "HLT" if pot == "BK" else "BK"
-    pot_max = _BK_MAX_WATTS if pot == "BK" else _HLT_MAX_WATTS
-    other_max = _HLT_MAX_WATTS if pot == "BK" else _BK_MAX_WATTS
-
-    # When both REGs are on, BK has priority — HLT must yield.
-    both_regs = (
-        _control_state["pots"]["BK"]["regulationEnabled"]
-        and _control_state["pots"]["HLT"]["regulationEnabled"]
-    )
-
-    _, pwm_pin, _ = _pot_pin_map(pot, config)
-
-    if both_regs and pot == "HLT":
-        # BK has priority: cap HLT to fit within remaining headroom after BK
-        bk_used = (_control_state["pots"]["BK"]["efficiency"] / 100) * _BK_MAX_WATTS
-        hlt_cap = max(0, min(100, ((max_watts - bk_used) / _HLT_MAX_WATTS) * 100))
-        capped = min(body.value, hlt_cap)
-        _control_state["pots"]["HLT"]["efficiency"] = capped
-        utils_rpi.change_pwm_duty_cycle(pwm_pin, capped)
-    else:
-        # Apply the requested efficiency to this pot
-        _control_state["pots"][pot]["efficiency"] = body.value
-        utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)
-
-        # Throttle the other pot if both heaters are on and total power exceeds the limit
-        if _control_state["pots"][other]["heaterOn"]:
-            used_by_this = (body.value / 100) * pot_max if _control_state["pots"][pot]["heaterOn"] else 0
-            headroom = max_watts - used_by_this
-            other_cap = max(0, min(100, (headroom / other_max) * 100))
-            other_eff = _control_state["pots"][other]["efficiency"]
-            if other_eff > other_cap:
-                _, other_pwm, _ = _pot_pin_map(other, config)
-                _control_state["pots"][other]["efficiency"] = other_cap
-                utils_rpi.change_pwm_duty_cycle(other_pwm, other_cap)
-
+    _apply_efficiency(pot, body.value, read_config())
     return {"status": "ok"}
 
 
@@ -522,18 +685,17 @@ async def get_temperature_average(pot: str, minutes: float) -> Dict[str, Any]:
     if not history:
         return {"pot": pot.upper(), "average": None, "minutes_requested": minutes, "minutes_available": 0, "sample_count": 0}
 
-    now = datetime.now()
-    cutoff = now - timedelta(minutes=minutes)
+    # Rows carry an epoch-ms timestamp ("ts") — no ISO parsing per row.
+    now_ms = time.time() * 1000
+    cutoff_ms = now_ms - minutes * 60 * 1000
 
     # Find the actual time span of available data
-    first_ts = datetime.fromisoformat(history[0]["timestamp"])
-    available_minutes = (now - first_ts).total_seconds() / 60
+    available_minutes = (now_ms - history[0]["ts"]) / 60000
 
     # Filter readings within the requested window
     readings = []
     for row in history:
-        ts = datetime.fromisoformat(row["timestamp"])
-        if ts >= cutoff:
+        if row["ts"] >= cutoff_ms:
             val = row.get(pot)
             if val is not None:
                 readings.append(val)
@@ -552,13 +714,14 @@ async def get_temperature_average(pot: str, minutes: float) -> Dict[str, Any]:
 
 
 @app.get("/api/temperature/history")
-async def get_temperature_history() -> list:
-    """Return the full temperature log for the current session.
+async def get_temperature_history(since: Optional[int] = None) -> list:
+    """Return the temperature log for the current session.
 
-    Each row is {timestamp, bk, mlt, hlt} — the shape the chart expects to
-    seed itself on (re)mount so prior readings survive a page reload.
+    Each row is {timestamp, ts, bk, mlt, hlt} where ts is epoch ms. With
+    ?since=<epoch_ms> only rows newer than that timestamp are returned, so
+    the chart tops up incrementally instead of re-downloading the session.
     """
-    return session_logger.get_history()
+    return session_logger.get_history(since_ms=since)
 
 
 @app.get("/api/hardware/temperature")
@@ -662,42 +825,91 @@ async def _brewersfriend_get(client: "httpx.AsyncClient", *, params: Dict[str, A
         )
 
 
-@app.get("/api/recipes")
-async def get_recipes() -> Dict[str, Any]:
-    """Fetch all recipes from Brewer's Friend (without ingredients for speed)."""
-    api_key = _get_api_key()
+# Recipe-list cache — browsing back to the recipe tab within the TTL serves
+# the list instantly and spares Brewer's Friend's 429 rate limit. The UI's
+# refresh button bypasses it with ?refresh=1.
+_RECIPES_CACHE_TTL_SECONDS = 300
+_recipes_cache: Dict[str, Any] = {"data": None, "fetched_at": 0.0}
 
-    all_recipes = []
-    offset = 0
+
+def _slim_recipe(r: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": r.get("id"),
+        "name": r.get("title", ""),
+        "style": r.get("stylename", ""),
+        "abv": r.get("abv", ""),
+        "ibu": r.get("ibutinseth", ""),
+        "ebc": r.get("srmecbmorey", ""),
+        "createdAt": r.get("created_at", ""),
+    }
+
+
+@app.get("/api/recipes")
+async def get_recipes(refresh: bool = False) -> Dict[str, Any]:
+    """Fetch all recipes from Brewer's Friend (without ingredients for speed).
+
+    Results are cached for a few minutes; pages after the first are fetched
+    concurrently when the API reports a total count.
+    """
+    if (
+        not refresh
+        and _recipes_cache["data"] is not None
+        and time.monotonic() - _recipes_cache["fetched_at"] < _RECIPES_CACHE_TTL_SECONDS
+    ):
+        return _recipes_cache["data"]
+
+    api_key = _get_api_key()
     limit = 100  # max allowed by the API
 
     async with httpx.AsyncClient(timeout=15) as client:
-        while True:
-            data = await _brewersfriend_get(
-                client,
-                params={"sort": "created_at:-1", "limit": limit, "offset": offset},
-                api_key=api_key,
-            )
-            batch = data.get("recipes", [])
-            if not batch:
-                break
+        first = await _brewersfriend_get(
+            client,
+            params={"sort": "created_at:-1", "limit": limit, "offset": 0},
+            api_key=api_key,
+        )
+        batch = first.get("recipes", [])
+        all_recipes = [_slim_recipe(r) for r in batch]
 
-            for r in batch:
-                all_recipes.append({
-                    "id": r.get("id"),
-                    "name": r.get("title", ""),
-                    "style": r.get("stylename", ""),
-                    "abv": r.get("abv", ""),
-                    "ibu": r.get("ibutinseth", ""),
-                    "ebc": r.get("srmecbmorey", ""),
-                    "createdAt": r.get("created_at", ""),
-                })
+        if len(batch) == limit:
+            try:
+                total = int(first.get("count"))
+            except (TypeError, ValueError):
+                total = None
 
-            if len(batch) < limit:
-                break
-            offset += limit
+            if total is not None and total > limit:
+                # Total known — fetch every remaining page concurrently.
+                offsets = range(limit, total, limit)
+                pages = await asyncio.gather(*[
+                    _brewersfriend_get(
+                        client,
+                        params={"sort": "created_at:-1", "limit": limit, "offset": offset},
+                        api_key=api_key,
+                    )
+                    for offset in offsets
+                ])
+                for page in pages:
+                    all_recipes.extend(_slim_recipe(r) for r in page.get("recipes", []))
+            else:
+                # Total unknown — fall back to walking pages serially.
+                offset = limit
+                while True:
+                    data = await _brewersfriend_get(
+                        client,
+                        params={"sort": "created_at:-1", "limit": limit, "offset": offset},
+                        api_key=api_key,
+                    )
+                    page_batch = data.get("recipes", [])
+                    if not page_batch:
+                        break
+                    all_recipes.extend(_slim_recipe(r) for r in page_batch)
+                    if len(page_batch) < limit:
+                        break
+                    offset += limit
 
-    return {"recipes": all_recipes}
+    result = {"recipes": all_recipes}
+    _recipes_cache["data"] = result
+    _recipes_cache["fetched_at"] = time.monotonic()
+    return result
 
 
 @app.get("/api/recipes/{recipe_id}")
@@ -927,7 +1139,7 @@ def _extract_other_ingredients(recipe: Dict) -> list:
 
 
 # Serve React build
-STATIC_DIR = Path(__file__).parent.parent / "dist"
+STATIC_DIR = (Path(__file__).parent.parent / "dist").resolve()
 
 if STATIC_DIR.exists():
     # Mount static files
@@ -936,9 +1148,13 @@ if STATIC_DIR.exists():
     # Serve index.html for all other routes (SPA routing)
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
-        # If requesting a file that exists, serve it
-        file_path = STATIC_DIR / full_path
-        if file_path.is_file():
+        # Resolve and contain the path inside dist/ — otherwise `..` segments
+        # can escape and serve arbitrary files (.env, config.json, source).
+        try:
+            file_path = (STATIC_DIR / full_path).resolve()
+        except (OSError, ValueError):
+            file_path = None
+        if file_path and file_path.is_relative_to(STATIC_DIR) and file_path.is_file():
             return FileResponse(file_path)
         # Otherwise, serve index.html for SPA routing
         return FileResponse(STATIC_DIR / "index.html")

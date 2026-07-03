@@ -3,37 +3,61 @@ import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
 import { setPumpRampTarget, setPumpRampPower } from '../../utils/pumpRamp';
 import { useSettings, FALLBACK_AUTO_EFFICIENCY } from '../../contexts/SettingsContext';
+import { DEFAULT_BK_ELEMENT_WATTS, DEFAULT_HLT_ELEMENT_WATTS } from '../../utils/appDefaults';
 import PotCard from './PotCard';
 import PumpCard from './PumpCard';
 import BrewTimer from './BrewTimer';
 import styles from './BrewingPanel.module.css';
-
-const BK_MAX_WATTS = 8500;
-const HLT_MAX_WATTS = 5000;
 
 function BrewingPanel() {
   const { settings } = useSettings();
   const [states, setStates] = useState(brewSystem.getAllStates());
   const [timerState, setTimerState] = useState({ running: false, seconds: 0, target: 0 });
   const [priorityPot, setPriorityPot] = useState('BK');
+  // Backend reachability — after several failed polls the readings on screen
+  // are stale, which must be unmissable on a heater controller.
+  // frozenSince holds the wall-clock time of the last successful sync,
+  // snapshotted into state when the connection is declared lost.
+  const [frozenSince, setFrozenSince] = useState(null);
+  const pollFailures = useRef(0);
+  const lastSyncRef = useRef(null);
 
   const autoEfficiency = settings?.app?.auto_efficiency ?? FALLBACK_AUTO_EFFICIENCY;
   const maxWatts = settings?.app?.max_watts ?? 11000;
+  // Element wattages come from config.json via /api/settings — the backend
+  // enforces the same values, these only drive the display/caps here.
+  const BK_MAX_WATTS = settings?.app?.bk_element_watts ?? DEFAULT_BK_ELEMENT_WATTS;
+  const HLT_MAX_WATTS = settings?.app?.hlt_element_watts ?? DEFAULT_HLT_ELEMENT_WATTS;
   const pollSeconds = settings?.app?.brewing_panel_poll_seconds ?? 1;
-  // Per-pot regulation configs — each pot's effect deps will only fire when its own steps change.
+  // Per-pot regulation configs — each pot's effect deps will only fire when its own config changes.
   const bkRegConfig = useMemo(
-    () => ({ enabled: autoEfficiency.enabled, steps: autoEfficiency.bk?.steps ?? FALLBACK_AUTO_EFFICIENCY.bk.steps }),
-    [autoEfficiency.enabled, autoEfficiency.bk]
+    () => ({
+      enabled: autoEfficiency.bk?.enabled ?? FALLBACK_AUTO_EFFICIENCY.bk.enabled,
+      steps: autoEfficiency.bk?.steps ?? FALLBACK_AUTO_EFFICIENCY.bk.steps,
+    }),
+    [autoEfficiency.bk]
   );
   const hltRegConfig = useMemo(
-    () => ({ enabled: autoEfficiency.enabled, steps: autoEfficiency.hlt?.steps ?? FALLBACK_AUTO_EFFICIENCY.hlt.steps }),
-    [autoEfficiency.enabled, autoEfficiency.hlt]
+    () => ({
+      enabled: autoEfficiency.hlt?.enabled ?? FALLBACK_AUTO_EFFICIENCY.hlt.enabled,
+      steps: autoEfficiency.hlt?.steps ?? FALLBACK_AUTO_EFFICIENCY.hlt.steps,
+    }),
+    [autoEfficiency.hlt]
   );
 
   // Read environment once on mount — avoids re-renders when localStorage changes
   const isProduction = useRef(
     localStorage.getItem('brewSystemEnvironment') !== 'development'
   ).current;
+
+  // Dev mode: push live settings into the mock so auto-efficiency changes take
+  // effect immediately — mirrors production, where the backend re-reads config
+  // on every regulation tick.
+  useEffect(() => {
+    if (!isProduction) {
+      brewSystem.setRegulationConfig({ BK: bkRegConfig, HLT: hltRegConfig });
+    }
+  }, [isProduction, bkRegConfig, hltRegConfig]);
 
   // Timestamp of the last user-initiated command.  Polling is suppressed for a
   // short window after a command so that stale backend responses cannot
@@ -48,12 +72,14 @@ function BrewingPanel() {
   priorityPotRef.current = priorityPot;
   const maxWattsRef = useRef(maxWatts);
   maxWattsRef.current = maxWatts;
+  const elementWattsRef = useRef({ bk: BK_MAX_WATTS, hlt: HLT_MAX_WATTS });
+  elementWattsRef.current = { bk: BK_MAX_WATTS, hlt: HLT_MAX_WATTS };
 
   useEffect(() => {
-    // Initialize GPIO pins on the Pi when in production mode
+    // NOTE: no hardware initialization here. GPIO init happens once in the
+    // backend's lifespan — a browser reload mid-brew must never kill heaters
+    // or wipe the session log. On mount we only sync state from the backend.
     if (isProduction) {
-      hardwareApi.initialize();
-      // Sync control state from backend once on mount
       hardwareApi.getFullState().then((state) => {
         if (state) {
           setStates((prev) => ({
@@ -76,11 +102,15 @@ function BrewingPanel() {
     // voice assistant) are reflected in the UI. Polling is skipped for 2 s after
     // the last user command to avoid stale responses overwriting optimistic state.
     const POLL_SUPPRESS_MS = 2000;
+    const CONNECTION_LOST_AFTER = 3; // consecutive failed polls
     const interval = setInterval(async () => {
       if (isProduction) {
         if (Date.now() - lastCommandTime.current < POLL_SUPPRESS_MS) return;
         const state = await hardwareApi.getFullState();
         if (state) {
+          pollFailures.current = 0;
+          lastSyncRef.current = Date.now();
+          setFrozenSince(null);
           // If a command was sent while the request was in-flight, discard this
           // response — it may contain stale control state.
           if (Date.now() - lastCommandTime.current < POLL_SUPPRESS_MS) return;
@@ -96,18 +126,25 @@ function BrewingPanel() {
             },
           }));
           if (state.timer) setTimerState(state.timer);
+        } else {
+          // Backend unreachable — after a few misses, warn loudly instead of
+          // silently showing frozen readings on a device that drives heaters.
+          pollFailures.current += 1;
+          if (pollFailures.current >= CONNECTION_LOST_AFTER) {
+            setFrozenSince((prev) => prev ?? lastSyncRef.current ?? Date.now());
+          }
         }
       } else {
-        // Only sync simulated temperatures from the mock — control state
-        // (heaterOn, efficiency, etc.) is already kept in React state by the
-        // immutable updates in handlePotUpdate / handlePumpUpdate.
+        // Sync full pot state from the mock — regulation now runs inside the
+        // mock (mirroring the backend), so heaterOn/efficiency can change
+        // without user input and must be reflected here.
         const mock = brewSystem.getAllStates();
         setStates((prev) => ({
           ...prev,
           pots: {
-            BK:  { ...prev.pots.BK,  pv: mock.pots.BK.pv },
+            BK:  { ...prev.pots.BK,  ...mock.pots.BK },
             MLT: { ...prev.pots.MLT, pv: mock.pots.MLT.pv },
-            HLT: { ...prev.pots.HLT, pv: mock.pots.HLT.pv },
+            HLT: { ...prev.pots.HLT, ...mock.pots.HLT },
           },
         }));
       }
@@ -127,6 +164,7 @@ function BrewingPanel() {
     lastCommandTime.current = Date.now();
     const s = statesRef.current;
     const mw = maxWattsRef.current;
+    const { bk: bkMaxW, hlt: hltMaxW } = elementWattsRef.current;
     const pp = priorityPotRef.current;
     if (updates.heaterOn !== undefined) {
       brewSystem.setPotHeater(potName, updates.heaterOn);
@@ -156,8 +194,8 @@ function BrewingPanel() {
         // Throttle the non-priority (yielding) pot to stay within the remaining headroom.
         // When both REGs are on, BK always has priority — HLT always yields.
         if (potName === 'BK' && s.pots.HLT.heaterOn) {
-          const usedByBk = (s.pots.BK.heaterOn ? updates.efficiency : 0) / 100 * BK_MAX_WATTS;
-          const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
+          const usedByBk = (s.pots.BK.heaterOn ? updates.efficiency : 0) / 100 * bkMaxW;
+          const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / hltMaxW) * 100));
           const clamped = Math.min(s.pots.HLT.efficiency, newHltCap);
           debouncedApi('eff-HLT', () => hardwareApi.setPotEfficiency('HLT', clamped));
           yieldPot = 'HLT';
@@ -165,15 +203,15 @@ function BrewingPanel() {
         } else if (potName === 'HLT' && s.pots.BK.heaterOn) {
           if (bothRegsOn) {
             // BK has priority: cap HLT based on BK's current usage
-            const usedByBk = s.pots.BK.efficiency / 100 * BK_MAX_WATTS;
-            const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
+            const usedByBk = s.pots.BK.efficiency / 100 * bkMaxW;
+            const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / hltMaxW) * 100));
             const clamped = Math.min(updates.efficiency, newHltCap);
             debouncedApi(`eff-${potName}`, () => hardwareApi.setPotEfficiency('HLT', clamped));
             // Update the efficiency we're applying to be the clamped value
             updates = { ...updates, efficiency: clamped };
           } else {
-            const usedByHlt = (s.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * HLT_MAX_WATTS;
-            const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / BK_MAX_WATTS) * 100));
+            const usedByHlt = (s.pots.HLT.heaterOn ? updates.efficiency : 0) / 100 * hltMaxW;
+            const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / bkMaxW) * 100));
             const clamped = Math.min(s.pots.BK.efficiency, newBkCap);
             debouncedApi('eff-BK', () => hardwareApi.setPotEfficiency('BK', clamped));
             yieldPot = 'BK';
@@ -187,12 +225,12 @@ function BrewingPanel() {
       const newBkOn = potName === 'BK' ? updates.heaterOn : s.pots.BK.heaterOn;
       const newHltOn = potName === 'HLT' ? updates.heaterOn : s.pots.HLT.heaterOn;
       if (pp === 'BK' && newHltOn) {
-        const usedByBk = (newBkOn ? s.pots.BK.efficiency : 0) / 100 * BK_MAX_WATTS;
-        const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / HLT_MAX_WATTS) * 100));
+        const usedByBk = (newBkOn ? s.pots.BK.efficiency : 0) / 100 * bkMaxW;
+        const newHltCap = Math.max(0, Math.min(100, ((mw - usedByBk) / hltMaxW) * 100));
         hardwareApi.setPotEfficiency('HLT', Math.min(s.pots.HLT.efficiency, newHltCap));
       } else if (pp === 'HLT' && newBkOn) {
-        const usedByHlt = (newHltOn ? s.pots.HLT.efficiency : 0) / 100 * HLT_MAX_WATTS;
-        const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / BK_MAX_WATTS) * 100));
+        const usedByHlt = (newHltOn ? s.pots.HLT.efficiency : 0) / 100 * hltMaxW;
+        const newBkCap = Math.max(0, Math.min(100, ((mw - usedByHlt) / bkMaxW) * 100));
         hardwareApi.setPotEfficiency('BK', Math.min(s.pots.BK.efficiency, newBkCap));
       }
     }
@@ -260,6 +298,12 @@ function BrewingPanel() {
 
   return (
     <div className={styles.brewingPanel}>
+      {frozenSince != null && (
+        <div className={styles.connectionBanner}>
+          ⚠ Backend unreachable — readings frozen since{' '}
+          {new Date(frozenSince).toLocaleTimeString([], { hour12: false })}. Controls are inactive.
+        </div>
+      )}
       {/* Pot Cards Row - Strict order: BK, MLT, HLT */}
       <div className={styles.potRow}>
         <PotCard

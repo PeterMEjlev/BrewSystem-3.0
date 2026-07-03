@@ -170,20 +170,24 @@ function register(bruce, apiCall) {
 
   // ── Power draw ─────────────────────────────────────────────────────────
 
-  const BK_MAX_WATTS = 8500;
-  const HLT_MAX_WATTS = 5000;
-
   bruce.registerFunction(
     'get_power_draw',
     'Get the current power draw (watts) of the system, broken down by BK and HLT.',
     { type: 'object', properties: {}, required: [] },
     async () => {
-      const state = await apiCall('GET', '/api/hardware/state');
+      // Element wattages live in config.json — read them alongside the state
+      // so this stays in sync with what the backend enforces.
+      const [state, settings] = await Promise.all([
+        apiCall('GET', '/api/hardware/state'),
+        apiCall('GET', '/api/settings').catch(() => null),
+      ]);
+      const bkMaxWatts = settings?.app?.bk_element_watts ?? 8500;
+      const hltMaxWatts = settings?.app?.hlt_element_watts ?? 5000;
       const pots = state.controlState?.pots || {};
       const bk = pots.BK || {};
       const hlt = pots.HLT || {};
-      const bkWatts = bk.heaterOn ? Math.round((bk.efficiency / 100) * BK_MAX_WATTS) : 0;
-      const hltWatts = hlt.heaterOn ? Math.round((hlt.efficiency / 100) * HLT_MAX_WATTS) : 0;
+      const bkWatts = bk.heaterOn ? Math.round((bk.efficiency / 100) * bkMaxWatts) : 0;
+      const hltWatts = hlt.heaterOn ? Math.round((hlt.efficiency / 100) * hltMaxWatts) : 0;
       const total = bkWatts + hltWatts;
       return `Total power draw: ${total.toLocaleString()} watts. BK: ${bkWatts.toLocaleString()} W, HLT: ${hltWatts.toLocaleString()} W.`;
     }

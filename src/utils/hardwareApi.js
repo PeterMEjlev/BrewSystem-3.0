@@ -17,7 +17,11 @@ const post = async (path, body) => {
 };
 
 export const hardwareApi = {
-  /** Initialize all GPIO pins to LOW on the Pi */
+  /**
+   * DESTRUCTIVE: drives all GPIO pins LOW (heaters/pumps off) and starts a
+   * new log session. Only call from an explicit user action — never on
+   * mount/reload (backend lifespan owns startup GPIO init).
+   */
   initialize: () =>
     post('/api/hardware/initialize'),
 
@@ -57,9 +61,13 @@ export const hardwareApi = {
       .then((r) => r.json())
       .catch(() => null),
 
-  /** Fetch full session temperature history. Returns array of { timestamp, bk, mlt, hlt } or [] on error */
-  getTemperatureHistory: () =>
-    fetch('/api/temperature/history')
+  /**
+   * Fetch session temperature history. Rows are { timestamp, ts, bk, mlt, hlt }
+   * with ts in epoch ms. Pass sinceMs to only get rows newer than that
+   * timestamp (incremental top-up). Returns [] on error.
+   */
+  getTemperatureHistory: (sinceMs) =>
+    fetch(sinceMs != null ? `/api/temperature/history?since=${sinceMs}` : '/api/temperature/history')
       .then((r) => r.json())
       .catch(() => []),
 };
