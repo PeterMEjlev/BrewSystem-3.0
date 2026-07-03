@@ -260,6 +260,25 @@ To integrate with real hardware:
 
 The settings configured in the UI will be automatically available to your hardware control code by reading `config.json`.
 
+## Remote Access via BrewPlanner
+
+The BrewPlanner server (the internet-facing Pi) mirrors this system's main
+brewing screen on its **Brew System** page and proxies control commands to this
+backend over the LAN (`/api/brew-system/*` → `http://<this-pi>:8000/api/...`).
+BrewPlanner's login + admin role gate all remote access; this backend needs no
+changes for it and stays unauthenticated by design.
+
+Two operational rules keep that safe:
+
+1. **LAN-only**: never port-forward or tunnel this Pi's port 8000 directly —
+   the API has no auth. BrewPlanner is the only remote door.
+2. **Stable address**: give this Pi a static IP or DHCP reservation, and point
+   BrewPlanner's `BREW_SYSTEM_URL` env var at it (see
+   `BrewPlanner/deploy/brewplanner.env.example`).
+
+Both UIs stay consistent automatically — this backend is the single source of
+truth, and each UI polls it.
+
 ## Temperature Regulation
 
 The system implements automatic efficiency control:
