@@ -143,6 +143,12 @@ After=network.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/brew-system-v3
+# The 1-Wire resolution files are root-owned and reappear on every boot, so the
+# service can't lower the DS18B20s to 10-bit on its own. The leading "+" runs
+# this step as root even though the service itself runs as pi. Without it the
+# sensors stay at 12-bit: ~750 ms per read, so a 3-sensor sweep takes ~4.6 s
+# against a 1 s loop, and the 10 s stale-sensor watchdog gets uncomfortably close.
+ExecStartPre=+/bin/sh -c 'chgrp pi /sys/bus/w1/devices/28-*/resolution && chmod g+w /sys/bus/w1/devices/28-*/resolution || true'
 ExecStart=/usr/bin/python3 /home/pi/brew-system-v3/backend/main.py
 Restart=always
 

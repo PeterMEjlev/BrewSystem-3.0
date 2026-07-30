@@ -149,9 +149,13 @@ async def lifespan(app: FastAPI):
     # reload mid-brew must never touch relay state.
     utils_rpi.initialize_gpio()
     session_logger.start_new_session()
+    # Only the pot keys hold sensor serials — `ds18b20` also carries the 1-Wire
+    # data pin, which is not a device and has no resolution file.
     sensors = read_config()["sensors"]["ds18b20"]
-    for serial in sensors.values():
-        utils_rpi.initialize_ds18b20_resolution(serial, resolution="10")
+    for pot in ("bk", "mlt", "hlt"):
+        serial = sensors.get(pot)
+        if serial:
+            utils_rpi.initialize_ds18b20_resolution(serial, resolution="10")
     read_task = asyncio.create_task(_temperature_read_loop())
     log_task = asyncio.create_task(_temperature_log_loop())
     watchdog_task = asyncio.create_task(_safety_watchdog_loop())
