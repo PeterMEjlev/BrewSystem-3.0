@@ -200,6 +200,16 @@ The system now includes a comprehensive settings panel for hardware configuratio
 
 Settings are stored in `config.json` at the project root. This file is read by both the backend API and can be accessed by your hardware control scripts.
 
+`config.json` is **per-install and not tracked in git** — it holds this rig's GPIO
+pins, DS18B20 serials and tuned regulation curves, which must survive a deploy.
+The backend creates it from the tracked `config.default.json` on first start, and
+the Settings panel edits it in place. So:
+
+- **Changing a default for every install** → edit `config.default.json` and commit.
+- **Changing this rig** → use the Settings panel (or edit `config.json`); it stays local.
+- **Deploying** → `git pull` never touches `config.json`. Back it up before
+  reimaging anyway: it is the only record of your pin map and sensor serials.
+
 ```json
 {
   "gpio": {

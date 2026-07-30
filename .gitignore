@@ -27,5 +27,11 @@ backend/session_logs/
 *.sln
 *.sw?
 
-__pychache__/
+__pycache__/
 *.pyc
+
+# Per-install hardware config: GPIO pins, DS18B20 serials, calibration and the
+# tuned regulation curves. Each rig owns its own — a deploy must never overwrite
+# it with a dev copy. The backend seeds it from config.default.json on first run
+# and the Settings panel edits it in place; ship changes via config.default.json.
+config.json

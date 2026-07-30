@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import tempfile
 import time
 from contextlib import asynccontextmanager
@@ -106,6 +107,30 @@ async def _temperature_log_loop():
             logging.getLogger(__name__).error("Temp log error: %s", e)
 
 
+def _seed_config_if_missing():
+    """Create config.json from config.default.json on first run.
+
+    config.json is per-install — GPIO pins, DS18B20 serials, tuned regulation
+    curves — so it is deliberately NOT in git: a deploy must never overwrite the
+    rig's live wiring with someone's dev copy. That means a fresh clone starts
+    without one, so seed it from the tracked defaults and let the operator fix
+    up the specifics in the Settings panel.
+    """
+    logger = logging.getLogger(__name__)
+    if CONFIG_FILE.exists():
+        return
+    try:
+        shutil.copyfile(DEFAULT_CONFIG_FILE, CONFIG_FILE)
+    except OSError as e:
+        # Not fatal here: read_config() raises a clearer error than we could.
+        logger.error("Could not seed config.json from config.default.json: %s", e)
+        return
+    logger.warning(
+        "No config.json found — seeded from config.default.json. "
+        "Verify GPIO pins and DS18B20 serials in Settings before heating anything."
+    )
+
+
 def _normalize_config():
     """Ensure config.json contains all keys defined in the Settings model."""
     config = read_config()
@@ -116,6 +141,9 @@ def _normalize_config():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Before anything reads the config — including utils_rpi.initialize_gpio(),
+    # which opens config.json itself.
+    _seed_config_if_missing()
     _normalize_config()
     # GPIO init happens exactly once, here — NOT from the frontend. A browser
     # reload mid-brew must never touch relay state.
