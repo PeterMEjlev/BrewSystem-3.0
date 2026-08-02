@@ -35,3 +35,6 @@ __pycache__/
 # it with a dev copy. The backend seeds it from config.default.json on first run
 # and the Settings panel edits it in place; ship changes via config.default.json.
 config.json
+
+# pytest
+.pytest_cache/

@@ -118,6 +118,25 @@ The API server will run at `http://localhost:8000`
 
 **Note:** For development, you can run both frontend (Vite dev server) and backend separately. For production, the backend serves the built frontend.
 
+### Tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+They run in a few seconds against a throwaway config with the GPIO layer
+mocked, so they are safe to run on the rig itself — nothing they do can reach a
+relay, the real `config.json`, or the session logs.
+
+What they cover is the code that is hard to check by looking at it: the shared
+power budget (two elements totalling 13.5 kW on an 11 kW supply, and who
+yields), the regulation curve and the safety cutoffs that override it, the
+timer state machine, and calibration. Where it matters they assert on the
+*pin*, not on the state dict — the bug worth catching is the one where the two
+disagree.
+
 ### Building for Production
 
 ```bash
@@ -309,7 +328,25 @@ bk_pin = config['gpio']['pot']['bk']
 - **Auto-save**: Changes are saved automatically
 - **Collapsible sections**: Organize settings by category
 - **No validation**: Trust user input for flexibility
-- **Atomic writes**: Safe file updates prevent corruption
+- **Atomic writes**: written to a temp file, flushed to the card, then renamed
+  into place — a power cut takes the old config or the new one, never half of
+  one. If `config.json` turns out to be unreadable at startup the backend boots
+  on `config.default.json` and says so on screen, rather than refusing to start
+  on a brew day.
+
+### Sensor calibration
+
+Settings → Hardware → Temperature Sensors carries a per-probe offset in °C,
+shown next to that probe's live reading. To calibrate, put the probe somewhere
+you know the temperature of — ice water is 0 °C, boiling is 100 °C less about
+0.3 °C per 100 m of altitude — wait for the reading to settle, and adjust the
+offset until it reads right.
+
+The offset is applied once, in the backend's read loop, so regulation, the
+safety cutoffs, the chart and the logs all act on the same corrected number.
+Offsets are clamped to ±5 °C: a probe further out than that is broken or is not
+in the pot it is labelled with, and quietly correcting for it would hide the
+fault the heating watcher exists to catch.
 
 ## Hardware Integration
 

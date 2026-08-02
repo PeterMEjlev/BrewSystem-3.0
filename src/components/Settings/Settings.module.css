@@ -267,6 +267,15 @@
   padding: 1px 5px;
 }
 
+/* The live reading beside a calibration offset. Sits in the label so the eye
+   goes value → field → value while you dial the probe in against a reference. */
+.calibrationReading {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-normal, 400);
+  margin-left: 10px;
+}
+
 /* Read-only text where an input would otherwise sit, so a status line lands on
    the same right-hand edge as the fields above it. */
 .settingValue {

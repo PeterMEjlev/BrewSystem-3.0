@@ -1,0 +1,5 @@
+# Test-only dependencies. Deliberately separate from requirements.txt so the
+# Pi doesn't carry a test runner it will never run:
+#   pip install -r requirements-dev.txt && pytest
+-r requirements.txt
+pytest==8.3.4

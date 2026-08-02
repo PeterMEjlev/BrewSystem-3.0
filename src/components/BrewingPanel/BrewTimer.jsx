@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react';
+import { startTimerAlarm, stopTimerAlarm } from '../../utils/sounds';
 import styles from './BrewTimer.module.css';
 
 const postTimer = async (action, seconds) => {
@@ -93,13 +94,20 @@ function BrewTimer({ timerState, isProduction }) {
     }
   }, [isProduction, timerState]);
 
-  // Notify Bruce when timer finishes
+  // Sound the alarm, and tell Bruce, when the timer finishes.
+  //
+  // The alarm is the part that has to work: Bruce is optional, lives on
+  // another Pi, and stays quiet when he is unconfigured or unreachable — which
+  // until now meant a finished timer made no sound at all unless somebody
+  // happened to be looking at the screen. The cleanup silences it, so
+  // dismissing the timer (isFinished → false) stops the noise.
   useEffect(() => {
-    if (isFinished) {
-      window.bruceAPI?.speak(
-        '[SYSTEM] The brew timer has just reached zero. Tell the user their timer is done.'
-      );
-    }
+    if (!isFinished) return undefined;
+    startTimerAlarm();
+    window.bruceAPI?.speak(
+      '[SYSTEM] The brew timer has just reached zero. Tell the user their timer is done.'
+    );
+    return stopTimerAlarm;
   }, [isFinished]);
 
   const applySegmentDelta = (segment, delta) => {

@@ -15,7 +15,7 @@ function getContext() {
 
 const STORAGE_KEY = 'brewSystemSoundVolumes';
 
-const defaults = { master: 0.8, buttons: 0.8, bruce: 0.8 };
+const defaults = { master: 0.8, buttons: 0.8, bruce: 0.8, alarm: 0.9 };
 
 let volumes = { ...defaults };
 
@@ -54,6 +54,11 @@ export function setBruceVolume(v) {
   volumes.bruce = Math.max(0, Math.min(1, v));
   persistVolumes();
   syncBruceVolume();
+}
+
+export function setAlarmVolume(v) {
+  volumes.alarm = Math.max(0, Math.min(1, v));
+  persistVolumes();
 }
 
 function syncBruceVolume() {
@@ -140,4 +145,73 @@ export function playToggleOff() {
 /** Navigation / tab switch — soft blip */
 export function playNavigate() {
   playTone(1200, 0.07, { type: 'sine', volume: 0.35 });
+}
+
+// ── Timer alarm ───────────────────────────────────────────────────────────────
+//
+// The brew timer marks hop additions and mash rests, which is to say the
+// moments where being thirty seconds late actually changes the beer. Bruce
+// announces them too, but he is optional and lives on another Pi, so the panel
+// has to be able to make a noise entirely on its own.
+
+let alarmTimer = null;
+let alarmStopTimer = null;
+
+// Repeat until acknowledged — one chime is no use to someone at the far end of
+// the brewery, which is exactly where a timer finds you.
+const ALARM_REPEAT_MS = 2500;
+// ...but not forever. A session abandoned with the timer up should not leave
+// the brewery beeping all night.
+const ALARM_MAX_MS = 10 * 60 * 1000;
+
+/** Effective alarm volume (master × alarm) */
+function alarmVol() {
+  return volumes.master * volumes.alarm;
+}
+
+/** One burst: three rising square-wave beeps. Square carries over a boil in a
+ *  way a sine does not — this needs to be heard across a room with a pump and
+ *  a rolling kettle in it, not to sound pleasant. */
+function playAlarmBurst() {
+  const scale = alarmVol();
+  if (scale <= 0) return;
+
+  const ac = getContext();
+  const now = ac.currentTime;
+
+  [0, 0.22, 0.44].forEach((offset, i) => {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880 + i * 220, now + offset);
+    // Ramp rather than a hard start/stop: a square wave switched on at full
+    // amplitude clicks through the speaker.
+    gain.gain.setValueAtTime(0.0001, now + offset);
+    gain.gain.exponentialRampToValueAtTime(0.5 * scale, now + offset + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(now + offset);
+    osc.stop(now + offset + 0.2);
+  });
+}
+
+/** Start the timer alarm. Repeats until stopTimerAlarm(), or ALARM_MAX_MS. */
+export function startTimerAlarm() {
+  if (alarmTimer) return; // already sounding
+  playAlarmBurst();
+  alarmTimer = setInterval(playAlarmBurst, ALARM_REPEAT_MS);
+  alarmStopTimer = setTimeout(stopTimerAlarm, ALARM_MAX_MS);
+}
+
+export function stopTimerAlarm() {
+  clearInterval(alarmTimer);
+  clearTimeout(alarmStopTimer);
+  alarmTimer = null;
+  alarmStopTimer = null;
+}
+
+/** One burst, for the volume slider in Settings. */
+export function playAlarmPreview() {
+  playAlarmBurst();
 }

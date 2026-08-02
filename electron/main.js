@@ -147,26 +147,65 @@ function startBruce() {
   });
 }
 
-function waitForBackend(url, retries = 30, delay = 1000) {
+/** One attempt at the backend. Resolves true if it answered at all. */
+function pingBackend(url) {
   return new Promise((resolve) => {
-    let attempts = 0;
-    const check = () => {
-      const req = http.get(url, (res) => {
-        res.resume();
-        resolve(true);
-      });
-      req.on('error', () => {
-        attempts++;
-        if (attempts < retries) {
-          setTimeout(check, delay);
-        } else {
-          resolve(false);
-        }
-      });
-      req.end();
-    };
-    check();
+    const req = http.get(url, (res) => {
+      res.resume();
+      resolve(true);
+    });
+    // Without this a connection that opens and then hangs never settles, and
+    // the retry loop below stops retrying.
+    req.setTimeout(2000, () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on('error', () => resolve(false));
+    req.end();
   });
+}
+
+/** The holding page. Counts up on its own so it is visibly waiting rather than
+ *  visibly broken — there is no keyboard on this machine to reload it with. */
+function waitingPage(url) {
+  const html = `<html><head><meta charset="utf-8"><style>
+    html,body{margin:0;height:100%;background:#1a1a1a;color:#e5e7eb;
+      font-family:system-ui,sans-serif;display:flex;align-items:center;
+      justify-content:center;text-align:center}
+    h1{font-size:1.6rem;font-weight:600;margin:0 0 .75rem}
+    p{color:#9ca3af;margin:.25rem 0;font-size:1rem}
+    code{color:#d1d5db}
+    .dot{animation:blink 1.4s infinite}.dot:nth-child(2){animation-delay:.2s}
+    .dot:nth-child(3){animation-delay:.4s}
+    @keyframes blink{0%,60%,100%{opacity:.25}30%{opacity:1}}
+  </style></head><body><div>
+    <h1>Waiting for the brew system backend<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></h1>
+    <p><code>${url}</code></p>
+    <p>Retrying every second — this page will load itself when the backend answers.</p>
+    <p id="t"></p>
+    <script>let n=0;setInterval(()=>{n++;document.getElementById('t').textContent=
+      'Waiting '+(n<60?n+'s':Math.floor(n/60)+'m '+(n%60)+'s')},1000)</script>
+  </div></body></html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+/**
+ * Wait for the backend, for as long as it takes.
+ *
+ * A cold Pi boot can take longer than any fixed timeout worth setting, and the
+ * cost of guessing too low is a kiosk parked on a dead page until somebody
+ * finds a keyboard for it. So it shows a holding page and keeps trying; the
+ * only way out is the backend answering or the app quitting.
+ */
+async function loadWhenBackendReady(win, url, delay = 1000) {
+  if (await pingBackend(url)) return true;
+
+  win.loadURL(waitingPage(url));
+  for (;;) {
+    await new Promise((r) => setTimeout(r, delay));
+    if (win.isDestroyed()) return false;
+    if (await pingBackend(url)) return true;
+  }
 }
 
 // IPC handler: frontend requests app quit
@@ -217,13 +256,11 @@ async function createWindow() {
     app.quit();
   });
 
-  const backendReady = await waitForBackend(LOAD_URL);
-  if (backendReady) {
-    win.loadURL(LOAD_URL);
-    startBruce();
-  } else {
-    win.loadURL(`data:text/html,<h1 style="color:white;background:#1a1a1a;margin:0;padding:2rem;font-family:sans-serif">Waiting for backend at ${LOAD_URL}... Please ensure the server is running.</h1>`);
-  }
+  // This can wait indefinitely, so everything after it has to cope with the
+  // app having been quit in the meantime.
+  if (!(await loadWhenBackendReady(win, LOAD_URL))) return;
+  win.loadURL(LOAD_URL);
+  startBruce();
 
   if (isDev) {
     win.webContents.openDevTools({ mode: 'detach' });

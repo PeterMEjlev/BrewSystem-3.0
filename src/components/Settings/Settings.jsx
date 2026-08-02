@@ -1,11 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
-import { playClick, getVolumes, setMasterVolume, setButtonVolume, setBruceVolume } from '../../utils/sounds';
+import { playClick, getVolumes, setMasterVolume, setButtonVolume, setBruceVolume, setAlarmVolume, playAlarmPreview } from '../../utils/sounds';
 import { hardwareApi } from '../../utils/hardwareApi';
+import { subscribeLiveState, getLiveState } from '../../utils/liveState';
 import { DEFAULT_HEAT_FAULT, DEFAULT_SCREEN_SLEEP } from '../../utils/appDefaults';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './Settings.module.css';
+
+// Mirrors _MAX_CALIBRATION_OFFSET_C in the backend, which clamps to the same
+// range: a probe further out than this is faulty, not miscalibrated.
+const MAX_CALIBRATION_OFFSET = 5;
+
+const clampOffset = (v) =>
+  Number.isNaN(v) ? 0 : Math.max(-MAX_CALIBRATION_OFFSET, Math.min(MAX_CALIBRATION_OFFSET, v));
+
+const formatTemp = (v) =>
+  v == null || Number.isNaN(Number(v)) ? '—' : `${Number(v).toFixed(1)} °C`;
 
 const SETTINGS_ITEMS = [
   {
@@ -87,6 +98,11 @@ function SoundSettings() {
   const handleBruce = (e) => {
     const v = parseFloat(e.target.value);
     setBruceVolume(v);
+    setVols(getVolumes());
+  };
+  const handleAlarm = (e) => {
+    const v = parseFloat(e.target.value);
+    setAlarmVolume(v);
     setVols(getVolumes());
   };
 
@@ -173,6 +189,37 @@ function SoundSettings() {
             Effective: {pct(vols.master * vols.bruce)}
           </span>
         </div>
+
+        <div className={styles.volumeRow}>
+          <label className={styles.volumeLabel}>
+            Timer Alarm
+            <span className={styles.volumeValue}>{pct(vols.alarm)}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={vols.alarm}
+            onChange={handleAlarm}
+            onPointerUp={playAlarmPreview}
+            className={styles.volumeSlider}
+            style={{
+              /* The alert red the warning banners use — there is no accent
+                 variable for it, and the other three accents are taken. */
+              background: `linear-gradient(to right,
+                #ef4444 0%,
+                #ef4444 ${vols.alarm * 100}%,
+                var(--color-border-light) ${vols.alarm * 100}%,
+                var(--color-border-light) 100%)`,
+            }}
+          />
+          <span className={styles.volumeEffective}>
+            Effective: {pct(vols.master * vols.alarm)} — sounds when the brew
+            timer reaches zero, and repeats until you dismiss it. Set it loud
+            enough to hear over a boil.
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -189,6 +236,10 @@ function Settings() {
   };
   const wrapperRef = useRef(null);
   const dragState = useRef({ isDragging: false, startY: 0, startScroll: 0, moved: false, scrollEl: null });
+  // Live readings for the calibration fields — already corrected by the offsets
+  // below them, which is what makes dialling one in a closed loop: adjust until
+  // the number matches the reference you have the probe sitting in.
+  const liveTemperatures = useSyncExternalStore(subscribeLiveState, getLiveState).state?.temperatures;
 
   const getScrollParent = (el) => {
     let node = el;
@@ -917,6 +968,37 @@ function Settings() {
                       onChange={(e) => updateSetting('sensors.ds18b20.pin', parseInt(e.target.value))}
                     />
                   </div>
+
+                  <div className={styles.subsectionTitle}>Calibration</div>
+                  <p className={styles.settingHint}>
+                    Each offset is added to that probe&rsquo;s reading everywhere —
+                    regulation, the safety cutoffs, the chart and the logs all use the
+                    corrected value. To calibrate, put the probe somewhere you know the
+                    temperature of (ice water is 0&nbsp;°C; boiling is 100&nbsp;°C, less
+                    about 0.3&nbsp;°C per 100&nbsp;m of altitude), wait for the reading
+                    to settle, then adjust the offset until it reads right.
+                  </p>
+                  {['bk', 'mlt', 'hlt'].map((pot) => (
+                    <div key={pot} className={styles.inputGroup}>
+                      <label>
+                        {pot.toUpperCase()} Offset (°C):
+                        <span className={styles.calibrationReading}>
+                          now reading {formatTemp(liveTemperatures?.[pot])}
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={-MAX_CALIBRATION_OFFSET}
+                        max={MAX_CALIBRATION_OFFSET}
+                        value={settings.sensors.calibration?.[pot] ?? 0}
+                        onChange={(e) => updateSetting(
+                          `sensors.calibration.${pot}`,
+                          clampOffset(parseFloat(e.target.value))
+                        )}
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

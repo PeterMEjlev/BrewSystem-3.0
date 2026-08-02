@@ -303,8 +303,26 @@ function BrewingPanel() {
     ? []
     : Object.entries(heatFaults).filter(([, fault]) => fault?.active);
 
+  // Settled at startup and true for the whole session, so unlike the fault
+  // banners these stay up while the backend is unreachable — they describe how
+  // the backend was started, which being unable to reach it does not change.
+  const systemWarnings = live.state?.systemWarnings ?? {};
+
   return (
     <div className={styles.brewingPanel}>
+      {systemWarnings.configFallback?.active && (
+        <div className={styles.configBanner}>
+          ⚠ Configuration could not be read — running on factory defaults.
+          Check GPIO pins and sensor serials in Settings before heating anything.
+        </div>
+      )}
+      {systemWarnings.simulation?.active && (
+        <div className={styles.simulationBanner}>
+          ⚠ Simulation mode — pigpio is not connected. Temperatures are not real
+          and nothing will actually heat or pump. Run <code>sudo pigpiod</code> and
+          restart the backend.
+        </div>
+      )}
       {frozenSince != null && (
         <div className={styles.connectionBanner}>
           ⚠ Backend unreachable — readings frozen since{' '}

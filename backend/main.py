@@ -45,6 +45,39 @@ _temperature_cache: Dict[str, Optional[float]] = {"bk": None, "mlt": None, "hlt"
 _last_read_time: float = 0.0
 
 
+# Widest offset the Settings panel will accept, and the backend will apply. A
+# DS18B20 that is out by more than this is not miscalibrated, it is broken or
+# not in the pot it is labelled with — and quietly correcting for that would
+# hide the fault the heat-fault watcher exists to catch.
+_MAX_CALIBRATION_OFFSET_C = 5.0
+
+
+def _apply_calibration(temps: Dict[str, Optional[float]], config: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    """Add each sensor's calibration offset to its raw reading.
+
+    Applied once, here, so that everything downstream — regulation, the safety
+    cutoffs, the session log, the chart, Bruce — agrees on what the temperature
+    is. A calibrated reading the regulator could not see would be worse than no
+    calibration at all.
+
+    A failed read stays None: there is nothing to correct, and an offset would
+    invent a temperature out of a missing one.
+    """
+    offsets = (config.get("sensors", {}) or {}).get("calibration", {}) or {}
+    corrected: Dict[str, Optional[float]] = {}
+    for pot, value in temps.items():
+        if value is None:
+            corrected[pot] = None
+            continue
+        try:
+            offset = float(offsets.get(pot, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            offset = 0.0
+        offset = max(-_MAX_CALIBRATION_OFFSET_C, min(_MAX_CALIBRATION_OFFSET_C, offset))
+        corrected[pot] = round(value + offset, 2)
+    return corrected
+
+
 async def _temperature_read_loop():
     """Background task: continuously read all sensors and update the in-memory cache,
     then run one regulation pass so heater control lives here — not in the browser.
@@ -62,7 +95,7 @@ async def _temperature_read_loop():
             config = read_config()
             sensors = config["sensors"]["ds18b20"]
             temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
-            _temperature_cache.update(temps)
+            _temperature_cache.update(_apply_calibration(temps, config))
             _last_read_time = time.monotonic()
             _regulation_tick(config)
             _heat_fault_tick(config)
@@ -146,6 +179,37 @@ def _seed_config_if_missing():
     )
 
 
+def _log_hardware_mode():
+    """Announce, unmissably, when the rig is not actually driving any hardware.
+
+    Simulation mode is entered by the absence of something — pigpio failing to
+    connect — so it announces itself nowhere else. Everything downstream keeps
+    working: the API answers, temperatures move, the UI is indistinguishable
+    from a real brew. The only symptom is that the elements stay cold, and a
+    mash is a slow and expensive place to notice that.
+    """
+    logger = logging.getLogger(__name__)
+    if utils_rpi.IS_RPI:
+        logger.info("pigpio connected — driving real GPIO.")
+        return
+    bar = "!" * 74
+    logger.warning(
+        "\n%s\n"
+        # Plain ASCII on purpose: this is the one message that has to survive
+        # being read through whatever console the operator happens to have.
+        "  SIMULATION MODE - pigpio is not connected.\n"
+        "\n"
+        "  Temperatures are invented and NO relay or PWM output is being driven.\n"
+        "  The UI will look completely normal while the elements stay cold.\n"
+        "\n"
+        "  On the rig, this usually means the daemon is not running:\n"
+        "      sudo pigpiod          (and: sudo systemctl enable pigpiod)\n"
+        "  then restart this backend. On a dev machine, it is expected.\n"
+        "%s",
+        bar, bar,
+    )
+
+
 def _normalize_config():
     """Ensure config.json contains all keys defined in the Settings model."""
     config = read_config()
@@ -160,6 +224,9 @@ async def lifespan(app: FastAPI):
     # which opens config.json itself.
     _seed_config_if_missing()
     _normalize_config()
+    # Say it here rather than at import: this runs after uvicorn has configured
+    # logging, so the warning actually reaches the console it is meant for.
+    _log_hardware_mode()
     # GPIO init happens exactly once, here — NOT from the frontend. A browser
     # reload mid-brew must never touch relay state.
     utils_rpi.initialize_gpio()
@@ -340,22 +407,50 @@ class AppSettings(BaseModel):
     screen_sleep: ScreenSleepSettings = Field(default_factory=ScreenSleepSettings)
 
 
+class SensorCalibration(BaseModel):
+    """Per-probe offset in °C, added to that probe's raw reading.
+
+    Clamped to ±_MAX_CALIBRATION_OFFSET_C when applied: see _apply_calibration
+    for why a probe further out than that is a fault rather than a calibration.
+    """
+
+    bk: float = 0.0
+    mlt: float = 0.0
+    hlt: float = 0.0
+
+
+class SensorSettings(BaseModel):
+    # ds18b20 (serials and the 1-Wire pin) rides through untouched, along with
+    # anything a later version adds.
+    model_config = ConfigDict(extra='allow')
+
+    calibration: SensorCalibration = Field(default_factory=SensorCalibration)
+
+
 class Settings(BaseModel):
     """Settings model matching the config.json structure"""
     gpio: Dict[str, Any]
     pwm: Dict[str, Any]
-    sensors: Dict[str, Any]
+    # Typed, unlike gpio/pwm, so that a config.json written before calibration
+    # existed gets the block filled in by _normalize_config rather than the
+    # Settings panel having to invent it.
+    sensors: SensorSettings
     app: AppSettings = Field(default_factory=AppSettings)
     theme: Dict[str, str] = Field(default_factory=dict)
 
 
 _config_cache: Optional[Dict[str, Any]] = None
 
+# Set when config.json could not be parsed and the shipped defaults were used
+# instead. Surfaced to the UI by _system_warnings() — booting on someone else's
+# pin numbers is not something to discover by watching an element stay cold.
+_config_fallback_reason: Optional[str] = None
+
 
 def read_config() -> Dict[str, Any]:
     """Read configuration, using an in-memory cache to avoid SD-card I/O on
     every request.  The cache is invalidated on writes."""
-    global _config_cache
+    global _config_cache, _config_fallback_reason
     if _config_cache is not None:
         return _config_cache
     try:
@@ -363,8 +458,22 @@ def read_config() -> Dict[str, Any]:
             data = json.load(f)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Config file not found")
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Invalid config file format")
+    except json.JSONDecodeError as e:
+        # A truncated config.json is the classic SD-card power-cut failure.
+        # Refusing to start is the wrong answer on a brew day — but so is
+        # quietly carrying on, because what is in that file is this rig's
+        # wiring. So it boots on the shipped defaults and says so, in the log
+        # and on the screen, until someone has checked the pins in Settings.
+        logging.getLogger(__name__).error(
+            "config.json is corrupt (%s) — falling back to config.default.json. "
+            "VERIFY GPIO PINS AND SENSOR SERIALS IN SETTINGS BEFORE HEATING ANYTHING.", e
+        )
+        try:
+            with open(DEFAULT_CONFIG_FILE, 'r') as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            raise HTTPException(status_code=500, detail="Invalid config file format")
+        _config_fallback_reason = f"config.json could not be read ({e.msg})"
 
     # Legacy migration: pre-per-pot configs had a single `steps` array under
     # `auto_efficiency`.  Reset that section to defaults from config.default.json.
@@ -406,10 +515,25 @@ def write_config_atomic(data: Dict[str, Any]) -> None:
         suffix='.tmp'
     ) as tmp_file:
         json.dump(data, tmp_file, indent=2)
+        # os.replace is atomic against the filesystem, but only over a file the
+        # OS has actually written. Without this the rename can land while the
+        # contents are still in the page cache, so a power cut leaves a config
+        # that the filesystem considers fine and json.load does not — on the
+        # one file that holds this rig's wiring.
+        tmp_file.flush()
+        os.fsync(tmp_file.fileno())
         tmp_path = tmp_file.name
 
     # Atomically replace the old config file with the new one
-    os.replace(tmp_path, CONFIG_FILE)
+    try:
+        os.replace(tmp_path, CONFIG_FILE)
+    except OSError:
+        # Don't leave a stray tmp beside the config it failed to become.
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     _config_cache = data
 
 
@@ -855,6 +979,7 @@ def _state_snapshot() -> Dict[str, Any]:
             "target": _timer_state["target"],
         },
         "heatFaults": _heat_fault_report(),
+        "systemWarnings": _system_warnings(),
     }
 
 
@@ -1025,6 +1150,35 @@ async def live_state_socket(websocket: WebSocket):
         logging.getLogger(__name__).debug("WebSocket receive ended: %s", e)
     finally:
         _ws_clients.discard(websocket)
+
+
+def _system_warnings() -> Dict[str, Any]:
+    """Ways this backend is not running the way the brewer is entitled to assume.
+
+    Both of these are silent by construction, which is what makes them worth a
+    banner: the panel looks identical whether the relays are real or simulated,
+    and a config that failed to parse still leaves a rig that looks configured.
+    Neither is something the rig can fix on its own, so they are stated rather
+    than acted on — and stated on the screen, because nobody reads a kiosk's
+    log.
+
+    Both are settled at startup, so this diffs to nothing and costs a connected
+    client no traffic at all.
+    """
+    warnings: Dict[str, Any] = {}
+    if not utils_rpi.IS_RPI:
+        warnings["simulation"] = {
+            "active": True,
+            "detail": "pigpio is not connected — temperatures are simulated and "
+                      "no relay or PWM output is being driven.",
+        }
+    if _config_fallback_reason is not None:
+        warnings["configFallback"] = {
+            "active": True,
+            "detail": f"{_config_fallback_reason}; running on config.default.json. "
+                      "Check GPIO pins and sensor serials in Settings.",
+        }
+    return warnings
 
 
 @app.post("/api/hardware/initialize")

@@ -44,6 +44,35 @@
   50% { border-color: #fcd34d; }
 }
 
+/* Violet, and deliberately not sharing a colour with either banner above:
+   this one is not a fault, it is a statement that the panel is not connected
+   to the thing it appears to be controlling. It does not pulse — it will be
+   up for the whole session, and something that blinks for an hour stops
+   being read. */
+.simulationBanner {
+  background: #3b0764;
+  border: 2px solid #a855f7;
+  border-radius: 12px;
+  color: #e9d5ff;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  padding: 12px 20px;
+  text-align: center;
+}
+
+/* Red like the connection banner: wrong pin numbers are as serious as no
+   readings at all, and for the same reason — what is on screen is not the rig. */
+.configBanner {
+  background: #7f1d1d;
+  border: 2px solid #ef4444;
+  border-radius: 12px;
+  color: #fecaca;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  padding: 12px 20px;
+  text-align: center;
+}
+
 .potRow {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
