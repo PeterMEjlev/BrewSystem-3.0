@@ -9,6 +9,7 @@ A modern web-based brewery control system designed for Raspberry Pi kiosk mode d
 - **Real-time monitoring** - Live temperature tracking with visual feedback
 - **Brew timer** - Integrated timing system with Start/Pause/Stop/Reset controls
 - **Hardware abstraction** - Mock system for development, ready for GPIO integration
+- **Screen sleep** - Display powers down after 5 idle minutes; the rig keeps brewing
 - **Responsive layout** - Scales cleanly from 1366×768 to 1920×1080
 
 ## Technology Stack
@@ -175,11 +176,18 @@ Electron is installed as a project dependency. Create autostart script (`~/.conf
 
 ```bash
 @xset s off
-@xset -dpms
 @xset s noblank
+@xset +dpms
+@xset dpms 0 0 0
 @unclutter --start-hidden --hide-on-touch
 @/home/pi/brew-system-v3/node_modules/.bin/electron /home/pi/brew-system-v3
 ```
+
+X is told not to blank the screen on its own (`s off`, `s noblank`, and DPMS
+timeouts of zero) while leaving DPMS *enabled*, which is what lets the app power
+the panel down itself — see [Screen Sleep](#screen-sleep). Electron re-applies
+these four settings at startup, so an older autostart file carrying `@xset
+-dpms` only disables sleep until the app launches.
 
 Press **Ctrl+Shift+Q** to exit kiosk mode for maintenance.
 
@@ -294,6 +302,115 @@ Two operational rules keep that safe:
 
 Both UIs stay consistent automatically — this backend is the single source of
 truth, and each UI polls it.
+
+### Speaking through Bruce
+
+Traffic also runs the other way. Bruce — the voice assistant wired to the brewery
+speaker — lives on the BrewPlanner Pi, and this backend can push spoken
+announcements to him, so something it notices on its own is heard rather than
+only logged.
+
+Set the web server's address in this rig's `.env` and restart the backend:
+
+```bash
+BREW_PLANNER_URL=http://192.168.3.3:3000
+```
+
+Leave it unset and the backend simply stays quiet — a rig on the bench with no
+web server is a normal way to run it, not a misconfiguration.
+
+The route out is `POST /api/bruce/speak {"message": "..."}` on this backend,
+which forwards to BrewPlanner's `/api/bruce/speak` and on to Bruce's own
+loopback API. Everything on the rig that wants to be heard goes through that one
+endpoint rather than holding its own copy of the web server's address.
+
+No credential is needed: BrewPlanner admits any request from a private LAN
+address as admin (its `isLocalRequest`), and this rig is one. If that ever stops
+being true — `TRUST_LOCAL=false` over there, or the two Pis on separate subnets —
+set `BREW_PLANNER_TOKEN` here to a full-access token from BrewPlanner's
+`/api/auth/login`. Its read-only `WATCH_API_TOKEN` will not work; control routes
+refuse it by design.
+
+Speech never affects control. Every failure — no address set, web server
+rebooting, `bruce.service` stopped, speaker unplugged — is logged and dropped,
+because none of them is a reason to disturb a brew.
+
+Note this is separate from the Bruce that Electron starts on this rig
+(`electron/bruce.js`, wake word and microphone). That one is untouched.
+
+### Heating fault detection
+
+The backend watches for an element that is switched on but isn't heating its pot
+— unplugged after cleaning, a dead relay, or a sensor sitting in a different pot
+than the one it's labelled with. When a pot calls for heat for `timeout_seconds`
+without gaining `min_rise_c`, Bruce says so out loud and the brewing screen shows
+an amber banner.
+
+Only pots **under regulation** are watched, and only while they sit more than
+`min_headroom_c` (5 °C) below their set value. That is the one case where a flat
+sensor proves something: at that distance the auto-efficiency curve's top step is
+asking for 100 % power, so the pot has to climb. Nearer the set value the curve
+throttles back and a flat temperature is the system working; in manual mode the
+duty cycle is whatever the brewer chose, and a pot creeping along at 20 % is not
+a fault.
+
+It **warns only** — the element keeps running. Unlike the over-temperature cutoff
+and the stalled-sensor watchdog, which cut power because they are certain, this
+is an inference from a temperature that hasn't moved yet, and a false positive on
+a big cold mash would end a brew day for nothing. The brewer decides.
+
+Configured under Settings → Program → Heating Fault Detection:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `timeout_seconds` | 120 | How long an element may call for heat without the sensor moving |
+| `min_rise_c` | 1.0 | The rise that counts as "it is heating" |
+| `min_headroom_c` | 5.0 | How far below its set value a regulating pot must be before it is judged |
+| `min_efficiency` | 25.0 | Duty cycles below this are ignored — too little power to prove anything |
+| `renotify_seconds` | 600 | How often to repeat the spoken warning |
+
+Keep `min_headroom_c` at or above the top auto-efficiency threshold (also 5 °C by
+default) so the two agree. At 100 % power BK's 8.5 kW element moves a full 100 L
+kettle a degree in about 50 s, comfortably inside the 2-minute window; lengthen
+it if you brew bigger volumes.
+
+The watcher is deliberately quiet everywhere an answer would mean nothing: a pot
+not under regulation, one within `min_headroom_c` of its set value, a duty cycle
+under `min_efficiency`, and a failed sensor — which is the regulation loop's
+business, and already forces the heater off.
+
+## Screen Sleep
+
+The kiosk display powers itself down after 5 minutes without a touch, and any
+touch brings it straight back. That first touch only wakes the screen — a black
+overlay catches it, so nobody switches an 8.5 kW element on by reaching for a
+dark panel.
+
+**The rig never sleeps, only the screen does.** A Raspberry Pi has no
+suspend-to-RAM, and suspending the machine mid-brew would be the wrong thing
+anyway: sensor reads, regulation, the over-temperature cutoff, the stalled-sensor
+watchdog and heating-fault detection all keep running exactly as before. Nothing
+about a sleeping display reaches the hardware.
+
+The screen also stays lit whenever the rig is doing something — a heater on, a
+pump running, or the brew timer counting — so a long boil you aren't touching
+stays readable from across the room. Idle means *idle*: everything off. The rig's
+state is checked once, when the idle timer runs out; if it turns out to be busy
+the check repeats every 30 s. There is no extra polling the rest of the time.
+
+Configured under Settings → Program → Screen Sleep:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `enabled` | true | Whether the display sleeps at all |
+| `timeout_seconds` | 300 | Idle time before the panel powers down (edited in minutes in the UI) |
+
+Implementation: the frontend owns the idle timer, since it is the only part that
+sees touches, and asks Electron over IPC to cut the panel (`xset dpms force off`,
+falling back to `vcgencmd display_power 0`). This needs DPMS enabled in X — see
+the autostart file above. Quitting the app always wakes the display first, so
+Ctrl+Shift+Q can never leave a Pi that looks bricked. Outside Electron (a plain
+browser during development) the overlay still appears; only the backlight stays on.
 
 ## Temperature Regulation
 

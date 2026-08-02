@@ -6,6 +6,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quit: () => ipcRenderer.send('quit-app'),
 });
 
+// Kiosk screen sleep — the renderer owns the idle timer (it sees the touches),
+// the main process owns the panel. Absent in a plain browser, where the app
+// falls back to a black overlay with the backlight left on.
+contextBridge.exposeInMainWorld('displayAPI', {
+  sleep: () => ipcRenderer.send('display-sleep'),
+  wake: () => ipcRenderer.send('display-wake'),
+});
+
 contextBridge.exposeInMainWorld('bruceAPI', {
   onStateChange: (callback) => {
     const listener = (_event, state) => callback(state);

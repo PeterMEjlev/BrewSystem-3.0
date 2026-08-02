@@ -249,6 +249,60 @@
   margin-top: 0;
 }
 
+/* Explanatory paragraph under a subsection title — for settings whose effect
+   isn't obvious from the label alone (what a fault warning does, where the
+   voice comes from). Sized down so it reads as guidance, not as a control. */
+.settingHint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  margin: 0 0 16px 0;
+  max-width: 640px;
+}
+
+.settingHint code {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.9em;
+  padding: 1px 5px;
+}
+
+/* Read-only text where an input would otherwise sit, so a status line lands on
+   the same right-hand edge as the fields above it. */
+.settingValue {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: right;
+}
+
+.actionButton {
+  background: var(--color-bg-primary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  padding: 8px 16px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.actionButton:hover:not(:disabled) {
+  border-color: var(--color-accent-blue);
+  background: var(--color-bg-secondary);
+}
+
+.actionButton:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* A toggle in an input row sits at its natural width against the right edge,
+   rather than splitting the row with the field label (.inputGroup label). */
+.inputGroup .toggleLabel {
+  flex: 0 0 auto;
+}
+
 /* Auto-efficiency: two columns (BK + HLT) side by side */
 .thresholdGrid {
   display: grid;

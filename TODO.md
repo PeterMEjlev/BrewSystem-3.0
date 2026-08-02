@@ -2,7 +2,7 @@
 
 ## Generic alarm sound when a manual timer is up 
 
-## If pot is turned on, but the relevant sensor doesnt get hotter than a certain amount after x time (check connection reminder)
+
 
 ## Replace 500 ms polling with WebSocket push
 Currently the UI polls `getAllStates()` every 500 ms from BrewingPanel.jsx and TemperatureChart.jsx, plus a separate poll loop for the chart. This means the Pi handles ~2 requests/sec per client even when nothing changes, and UI updates lag by up to 500 ms after a state change.

@@ -3,6 +3,7 @@ import {
   DEFAULT_AUTO_EFFICIENCY,
   DEFAULT_BK_ELEMENT_WATTS,
   DEFAULT_HLT_ELEMENT_WATTS,
+  DEFAULT_SCREEN_SLEEP,
 } from '../utils/appDefaults';
 
 const SettingsContext = createContext(null);
@@ -13,6 +14,7 @@ const APP_DEFAULTS = {
   hlt_element_watts: DEFAULT_HLT_ELEMENT_WATTS,
   cursor_visibility: 'auto',
   brewing_panel_poll_seconds: 1,
+  screen_sleep: DEFAULT_SCREEN_SLEEP,
 };
 
 export const FALLBACK_AUTO_EFFICIENCY = DEFAULT_AUTO_EFFICIENCY;

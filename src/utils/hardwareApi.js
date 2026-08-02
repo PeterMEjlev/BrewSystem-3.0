@@ -70,4 +70,26 @@ export const hardwareApi = {
     fetch(sinceMs != null ? `/api/temperature/history?since=${sinceMs}` : '/api/temperature/history')
       .then((r) => r.json())
       .catch(() => []),
+
+  /**
+   * Say something out loud through Bruce on the BrewPlanner Pi. Resolves to
+   * true only if he actually took the message — an unconfigured or unreachable
+   * Bruce resolves false rather than throwing, so a caller can offer feedback
+   * without having to handle an error path.
+   */
+  speak: (message) =>
+    fetch('/api/bruce/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => Boolean(d?.spoken))
+      .catch(() => false),
+
+  /** Whether the rig can reach Bruce. Returns { configured, online, ... } or null. */
+  getBruceStatus: () =>
+    fetch('/api/bruce/status')
+      .then((r) => r.json())
+      .catch(() => null),
 };

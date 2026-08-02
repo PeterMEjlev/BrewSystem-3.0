@@ -56,6 +56,18 @@
           { "threshold": 0.0, "power": 0.0 }
         ]
       }
+    },
+    "screen_sleep": {
+      "enabled": true,
+      "timeout_seconds": 300
+    },
+    "heat_fault": {
+      "enabled": true,
+      "timeout_seconds": 120,
+      "min_rise_c": 1.0,
+      "min_headroom_c": 5.0,
+      "min_efficiency": 25.0,
+      "renotify_seconds": 600
     }
   },
   "theme": {}

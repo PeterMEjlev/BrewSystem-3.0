@@ -24,6 +24,26 @@
   50% { border-color: #fca5a5; }
 }
 
+/* Amber, not red: a heater that isn't heating is something to go and check,
+   not the total loss of readings the red banner above means. Deliberately
+   different at a glance so the two are never confused across the brewery. */
+.heatFaultBanner {
+  background: #78350f;
+  border: 2px solid #f59e0b;
+  border-radius: 12px;
+  color: #fde68a;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  padding: 12px 20px;
+  text-align: center;
+  animation: heatFaultPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes heatFaultPulse {
+  0%, 100% { border-color: #f59e0b; }
+  50% { border-color: #fcd34d; }
+}
+
 .potRow {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

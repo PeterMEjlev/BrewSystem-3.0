@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const path = require('path');
 
@@ -25,6 +25,80 @@ if (isLinux) {
 
 let bruceProcess = null;
 let mainWindow = null;
+let displayAsleep = false;
+
+// --- Display power (kiosk screen sleep) ---------------------------------
+// A Pi has no suspend-to-RAM, so "sleep" is the HDMI panel only — the backend
+// carries on reading sensors and regulating throughout. X is asked first
+// (instant, and any touch wakes the panel by itself); vcgencmd is the fallback
+// for setups where DPMS isn't available.
+
+function runQuiet(command, args) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(command, args, { stdio: 'ignore' });
+      child.on('error', () => resolve(false));
+      child.on('exit', (code) => resolve(code === 0));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+// Try each command in turn, stop at the first that succeeds.
+async function runFirstWorking(commands) {
+  for (const [command, args] of commands) {
+    if (await runQuiet(command, args)) return true;
+  }
+  return false;
+}
+
+// DPMS has to be enabled for `dpms force off` to do anything, but its own
+// timeouts must stay at zero — the app decides when the screen sleeps, not X,
+// so that a running brew can keep the display lit.
+function configureDisplayPower() {
+  if (!isLinux) return;
+  runQuiet('xset', ['s', 'off']);
+  runQuiet('xset', ['s', 'noblank']);
+  runQuiet('xset', ['+dpms']);
+  runQuiet('xset', ['dpms', '0', '0', '0']);
+}
+
+async function sleepDisplay() {
+  if (displayAsleep) return;
+  displayAsleep = true;
+  if (!isLinux) return; // dev machines: the black overlay is the whole effect
+  const ok = await runFirstWorking([
+    ['xset', ['dpms', 'force', 'off']],
+    ['vcgencmd', ['display_power', '0']],
+  ]);
+  if (!ok) console.warn('[Display] Could not power the screen off (no xset/vcgencmd?)');
+}
+
+async function wakeDisplay() {
+  if (!displayAsleep) return;
+  displayAsleep = false;
+  if (!isLinux) return;
+  await runFirstWorking([
+    ['xset', ['dpms', 'force', 'on']],
+    ['vcgencmd', ['display_power', '1']],
+  ]);
+}
+
+// Quitting with the panel still off would leave a Pi that looks bricked, and
+// will-quit doesn't wait for async work — so this path is synchronous.
+function wakeDisplaySync() {
+  if (!displayAsleep || !isLinux) return;
+  displayAsleep = false;
+  for (const [command, args] of [
+    ['xset', ['dpms', 'force', 'on']],
+    ['vcgencmd', ['display_power', '1']],
+  ]) {
+    try {
+      if (spawnSync(command, args, { stdio: 'ignore' }).status === 0) return;
+    } catch { /* try the next one */ }
+  }
+}
 
 const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
 const BRUCE_MSG_PREFIX = '@@BRUCE_MSG:';
@@ -107,6 +181,10 @@ ipcMain.on('bruce-speak', (_event, message) => {
   }
 });
 
+// IPC handlers: frontend idle timer drives the screen
+ipcMain.on('display-sleep', () => { sleepDisplay(); });
+ipcMain.on('display-wake', () => { wakeDisplay(); });
+
 // IPC handler: frontend sets Bruce speech volume
 ipcMain.on('bruce-volume', (_event, gain) => {
   if (bruceProcess && !bruceProcess.killed && bruceProcess.stdin.writable) {
@@ -131,6 +209,8 @@ async function createWindow() {
   mainWindow = win;
 
   win.setMenu(null);
+
+  configureDisplayPower();
 
   // Escape hatch: Ctrl+Shift+Q to quit kiosk mode
   globalShortcut.register('CommandOrControl+Shift+Q', () => {
@@ -158,6 +238,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  wakeDisplaySync();
   if (bruceProcess && !bruceProcess.killed) {
     bruceProcess.kill();
   }

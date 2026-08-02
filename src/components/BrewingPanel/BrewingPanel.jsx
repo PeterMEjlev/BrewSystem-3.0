@@ -21,6 +21,10 @@ function BrewingPanel() {
   const [frozenSince, setFrozenSince] = useState(null);
   const pollFailures = useRef(0);
   const lastSyncRef = useRef(null);
+  // Pots whose element is on but whose sensor isn't rising — decided by the
+  // backend watcher (see _heat_fault_tick), not here, so the warning is the same
+  // whether anyone has this screen open. Bruce says it out loud; this shows it.
+  const [heatFaults, setHeatFaults] = useState({});
 
   const autoEfficiency = settings?.app?.auto_efficiency ?? FALLBACK_AUTO_EFFICIENCY;
   const maxWatts = settings?.app?.max_watts ?? 11000;
@@ -93,6 +97,7 @@ function BrewingPanel() {
               P2: { ...prev.pumps.P2, ...state.controlState.pumps.P2 },
             },
           }));
+          setHeatFaults(state.heatFaults ?? {});
         }
       });
     }
@@ -126,6 +131,7 @@ function BrewingPanel() {
             },
           }));
           if (state.timer) setTimerState(state.timer);
+          setHeatFaults(state.heatFaults ?? {});
         } else {
           // Backend unreachable — after a few misses, warn loudly instead of
           // silently showing frozen readings on a device that drives heaters.
@@ -296,6 +302,12 @@ function BrewingPanel() {
   const onUpdateP1 = useCallback((updates) => handlePumpUpdate('P1', updates), [handlePumpUpdate]);
   const onUpdateP2 = useCallback((updates) => handlePumpUpdate('P2', updates), [handlePumpUpdate]);
 
+  // Suppressed while the backend is unreachable: the fault data would be as
+  // stale as the temperatures, and one loud banner beats two.
+  const activeHeatFaults = frozenSince != null
+    ? []
+    : Object.entries(heatFaults).filter(([, fault]) => fault?.active);
+
   return (
     <div className={styles.brewingPanel}>
       {frozenSince != null && (
@@ -304,6 +316,13 @@ function BrewingPanel() {
           {new Date(frozenSince).toLocaleTimeString([], { hour12: false })}. Controls are inactive.
         </div>
       )}
+      {activeHeatFaults.map(([pot, fault]) => (
+        <div key={pot} className={styles.heatFaultBanner}>
+          ⚠ {pot} is not heating — element on for {Math.round(fault.seconds / 60)} min
+          {fault.rise != null && `, only +${fault.rise.toFixed(1)}°C`}. Check the element
+          connection and that the sensor is in the pot.
+        </div>
+      ))}
       {/* Pot Cards Row - Strict order: BK, MLT, HLT */}
       <div className={styles.potRow}>
         <PotCard

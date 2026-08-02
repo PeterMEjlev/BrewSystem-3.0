@@ -155,11 +155,18 @@ Add these lines:
 
 ```
 @xset s off
-@xset -dpms
 @xset s noblank
+@xset +dpms
+@xset dpms 0 0 0
 @unclutter --start-hidden --hide-on-touch
 @/home/pi/brew-system-v3/node_modules/.bin/electron /home/pi/brew-system-v3
 ```
+
+DPMS is left **enabled with zero timeouts**: X never blanks the screen on its
+own, but the app can still power the panel down when the rig has been idle (see
+Screen Sleep in the README). Electron re-applies these four settings at startup,
+so an autostart file that still says `@xset -dpms` only breaks sleep until the
+app launches.
 
 Save and reboot:
 

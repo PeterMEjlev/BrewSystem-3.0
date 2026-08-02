@@ -10,12 +10,15 @@ import ToolsPage from './components/ToolsPage/ToolsPage';
 import KegStatusPage from './components/KegStatusPage/KegStatusPage';
 import BruceHistoryPage from './components/BruceHistoryPage/BruceHistoryPage';
 import Settings from './components/Settings/Settings';
+import ScreenSleepOverlay from './components/ScreenSleep/ScreenSleepOverlay';
+import { useScreenSleep } from './hooks/useScreenSleep';
 import './App.css';
 
 function AppShell() {
   const [activePanel, setActivePanel] = useState('brewing');
   const [bruceState, setBruceState] = useState('idle');
   const { settings } = useSettings();
+  const { asleep, wake } = useScreenSleep();
 
   useEffect(() => {
     if (window.bruceAPI?.onStateChange) {
@@ -50,6 +53,7 @@ function AppShell() {
         {activePanel === 'settings' && <Settings />}
       </main>
       <BottomNav activePanel={activePanel} onPanelChange={setActivePanel} bruceState={bruceState} />
+      {asleep && <ScreenSleepOverlay onWake={wake} />}
     </div>
   );
 }

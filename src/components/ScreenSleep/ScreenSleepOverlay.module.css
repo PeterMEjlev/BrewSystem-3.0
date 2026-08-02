@@ -1,0 +1,20 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  cursor: none;
+  /* The panel is off on the Pi; this only matters in a browser. */
+  touch-action: none;
+  user-select: none;
+}
+
+.hint {
+  color: #1c1c1c;
+  font-size: 1.1rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}

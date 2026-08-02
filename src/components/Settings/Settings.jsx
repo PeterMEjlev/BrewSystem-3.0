@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { playClick, getVolumes, setMasterVolume, setButtonVolume, setBruceVolume } from '../../utils/sounds';
+import { hardwareApi } from '../../utils/hardwareApi';
+import { DEFAULT_HEAT_FAULT, DEFAULT_SCREEN_SLEEP } from '../../utils/appDefaults';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
 import styles from './Settings.module.css';
 
@@ -239,10 +241,36 @@ function Settings() {
     temperatureSensors: true,
   });
 
+  // Whether this rig can reach Bruce on the BrewPlanner Pi. Checked once when
+  // the panel opens: the answer only changes when the other Pi is rebooted or
+  // BREW_PLANNER_URL is edited, neither of which happens while you watch.
+  const [bruceStatus, setBruceStatus] = useState(null);
+  const [speakTest, setSpeakTest] = useState(null);
+
   useEffect(() => {
     const savedEnvironment = localStorage.getItem('brewSystemEnvironment');
     setIsDevelopment(savedEnvironment === 'development');
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    hardwareApi.getBruceStatus().then((s) => {
+      if (!cancelled) setBruceStatus(s);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const testBruce = async () => {
+    playClick();
+    setSpeakTest('speaking');
+    const spoken = await hardwareApi.speak(
+      'This is a test from the brew system. If you can hear me, voice announcements are working.'
+    );
+    setSpeakTest(spoken ? 'ok' : 'failed');
+    // Re-probe: a failed test is most often Bruce having gone down since the
+    // panel opened, and the indicator should agree with what just happened.
+    if (!spoken) hardwareApi.getBruceStatus().then(setBruceStatus);
+  };
 
   const updateSetting = (path, value) => {
     if (typeof value === 'number' && isNaN(value)) return;
@@ -251,6 +279,10 @@ function Settings() {
       const keys = path.split('.');
       let current = next;
       for (let i = 0; i < keys.length - 1; i++) {
+        // A section added in a later version (heat_fault, say) is absent from a
+        // config.json written before it existed. The backend fills it in on the
+        // way out, but editing must not depend on that having happened.
+        if (current[keys[i]] == null) current[keys[i]] = {};
         current = current[keys[i]];
       }
       current[keys[keys.length - 1]] = value;
@@ -332,6 +364,8 @@ function Settings() {
 
   const bkSteps = settings.app.auto_efficiency.bk?.steps ?? [];
   const hltSteps = settings.app.auto_efficiency.hlt?.steps ?? [];
+  const heatFault = { ...DEFAULT_HEAT_FAULT, ...(settings.app.heat_fault ?? {}) };
+  const screenSleep = { ...DEFAULT_SCREEN_SLEEP, ...(settings.app.screen_sleep ?? {}) };
 
   const renderThresholdTable = (label, potKey, steps) => {
     const enabled = settings.app.auto_efficiency[potKey]?.enabled ?? true;
@@ -514,11 +548,187 @@ function Settings() {
               </select>
             </div>
 
+            <div className={styles.subsectionTitle}>Screen Sleep</div>
+
+            <p className={styles.settingHint}>
+              Powers the display down after a stretch with nobody touching it; any
+              touch brings it back, and that first touch only wakes the screen — it
+              never hits a control. The rig itself never sleeps: the backend keeps
+              reading sensors, regulating and watching for faults throughout. The
+              screen also stays lit while a heater or pump is on or the brew timer
+              is counting, so a boil is readable from across the room.
+            </p>
+
+            <div className={styles.inputGroup}>
+              <label>Enabled:</label>
+              <label className={styles.toggleLabel}>
+                <input
+                  type="checkbox"
+                  checked={screenSleep.enabled}
+                  onChange={(e) => updateSetting('app.screen_sleep.enabled', e.target.checked)}
+                  className={styles.toggleInput}
+                />
+                <span className={styles.toggleSlider}></span>
+                <span className={styles.toggleText}>{screenSleep.enabled ? 'On' : 'Off'}</span>
+              </label>
+            </div>
+
+            {screenSleep.enabled && (
+              <div className={styles.inputGroup}>
+                <label>Sleep After (minutes):</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Math.max(1, Math.round(screenSleep.timeout_seconds / 60))}
+                  onChange={(e) =>
+                    updateSetting(
+                      'app.screen_sleep.timeout_seconds',
+                      Math.max(1, parseInt(e.target.value) || 1) * 60
+                    )
+                  }
+                />
+              </div>
+            )}
+
             <div className={styles.subsectionTitle}>Auto Efficiency Control</div>
 
             <div className={styles.thresholdGrid}>
               {renderThresholdTable(`BK (${(settings.app.bk_element_watts / 1000).toFixed(1)} kW)`, 'bk', bkSteps)}
               {renderThresholdTable(`HLT (${(settings.app.hlt_element_watts / 1000).toFixed(1)} kW)`, 'hlt', hltSteps)}
+            </div>
+
+            <div className={styles.subsectionTitle}>Heating Fault Detection</div>
+
+            <p className={styles.settingHint}>
+              Warns when an element is switched on but its pot isn&apos;t warming — an
+              element left unplugged after cleaning, a dead relay, or a sensor that
+              isn&apos;t in the pot it&apos;s labelled with. Bruce says it out loud and the
+              brewing screen shows a banner; the element is left running either way.
+              Only pots in REG are watched, and only while they are more than the
+              headroom below their set value — where the curve is asking for full
+              power and the pot has to climb.
+            </p>
+
+            <div className={styles.inputGroup}>
+              <label>Enabled:</label>
+              <label className={styles.toggleLabel}>
+                <input
+                  type="checkbox"
+                  checked={heatFault.enabled}
+                  onChange={(e) => updateSetting('app.heat_fault.enabled', e.target.checked)}
+                  className={styles.toggleInput}
+                />
+                <span className={styles.toggleSlider}></span>
+                <span className={styles.toggleText}>{heatFault.enabled ? 'On' : 'Off'}</span>
+              </label>
+            </div>
+
+            {heatFault.enabled && (
+              <>
+                <div className={styles.inputGroup}>
+                  <label>Warn After (seconds):</label>
+                  <input
+                    type="number"
+                    min="10"
+                    step="10"
+                    value={heatFault.timeout_seconds}
+                    onChange={(e) => updateSetting('app.heat_fault.timeout_seconds', parseInt(e.target.value))}
+                  />
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label>Expected Rise (°C):</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={heatFault.min_rise_c}
+                    onChange={(e) => updateSetting('app.heat_fault.min_rise_c', parseFloat(e.target.value))}
+                  />
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label>Only When Below Target By (°C):</label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    value={heatFault.min_headroom_c}
+                    onChange={(e) => updateSetting('app.heat_fault.min_headroom_c', parseFloat(e.target.value))}
+                  />
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label>Ignore Below (% power):</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={heatFault.min_efficiency}
+                    onChange={(e) => updateSetting('app.heat_fault.min_efficiency', parseFloat(e.target.value))}
+                  />
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label>Repeat Warning Every (seconds):</label>
+                  <input
+                    type="number"
+                    min="30"
+                    step="30"
+                    value={heatFault.renotify_seconds}
+                    onChange={(e) => updateSetting('app.heat_fault.renotify_seconds', parseInt(e.target.value))}
+                  />
+                </div>
+
+                <p className={styles.settingHint}>
+                  Keep the headroom at or above the top auto-efficiency step
+                  ({bkSteps[0]?.threshold ?? 5} °C), so only pots the curve is driving at
+                  100 % are judged. There it takes{' '}
+                  {(settings.app.bk_element_watts / 1000).toFixed(1)} kW about{' '}
+                  {Math.round((4186 * 100 * heatFault.min_rise_c) / settings.app.bk_element_watts)} s
+                  to move a full 100 L BK by {heatFault.min_rise_c} °C, comfortably inside
+                  the window. Lengthen &ldquo;Warn After&rdquo; if you brew bigger volumes
+                  or get false alarms.
+                </p>
+              </>
+            )}
+
+            <div className={styles.subsectionTitle}>Bruce Voice Announcements</div>
+
+            <p className={styles.settingHint}>
+              Spoken warnings go to Bruce on the BrewPlanner Pi, which drives the
+              brewery speaker. Set <code>BREW_PLANNER_URL</code> in this rig&apos;s{' '}
+              <code>.env</code> to point at it, then restart the backend. Unset, the
+              backend stays silent and only logs.
+            </p>
+
+            <div className={styles.inputGroup}>
+              <label>Status:</label>
+              <span className={styles.settingValue}>
+                {bruceStatus == null
+                  ? 'Checking…'
+                  : !bruceStatus.configured
+                    ? 'Not configured — BREW_PLANNER_URL is unset'
+                    : bruceStatus.online
+                      ? `Connected — ${bruceStatus.url}`
+                      : `Unreachable${bruceStatus.error ? ` — ${bruceStatus.error}` : ''}`}
+              </span>
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label>Test:</label>
+              <button
+                type="button"
+                className={styles.actionButton}
+                onClick={testBruce}
+                disabled={speakTest === 'speaking' || bruceStatus?.configured === false}
+              >
+                {speakTest === 'speaking' ? 'Speaking…' : 'Say something'}
+              </button>
+              {speakTest === 'ok' && <span className={styles.settingValue}>Bruce took the message.</span>}
+              {speakTest === 'failed' && <span className={styles.settingValue}>Bruce could not be reached.</span>}
             </div>
           </div>
         )}

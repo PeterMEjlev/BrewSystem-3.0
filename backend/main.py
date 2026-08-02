@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+import bruce_client
 import utils_rpi
 from session_logger import session_logger
 
@@ -62,6 +63,7 @@ async def _temperature_read_loop():
             _temperature_cache.update(temps)
             _last_read_time = time.monotonic()
             _regulation_tick(config)
+            _heat_fault_tick(config)
         except Exception as e:
             logger.error("Temp read/regulation error: %s", e)
         elapsed = time.monotonic() - start
@@ -247,6 +249,63 @@ class AutoEfficiencySettings(BaseModel):
     hlt: PotAutoEfficiency = Field(default_factory=_hlt_default_steps)
 
 
+class HeatFaultSettings(BaseModel):
+    """When to decide an element that is switched on isn't actually heating.
+
+    The failure this catches is a cold one: the relay clicks, the UI shows
+    100 %, and nothing happens — an element unplugged after cleaning, a dead
+    SSR, a thermowell holding a sensor that isn't in the pot it is labelled
+    with. The rig can see all of those, because it knows both that it asked for
+    heat and what the sensor did next.
+
+    Only pots under regulation are judged, and only while they sit more than
+    `min_headroom_c` below their set value. That is the one case where the
+    physics is unambiguous: at that distance the auto-efficiency curve is asking
+    for 100 % power (its top step is the same 5 °C), and 8.5 kW moves a full
+    100 L kettle a degree in under a minute — so a flat sensor means something
+    is wrong. Nearer the set value the curve throttles back and a flat
+    temperature is the system working correctly; in manual mode the duty cycle
+    is whatever the brewer chose, and a pot creeping along at 20 % is not a
+    fault. Judging either would be crying wolf.
+    """
+
+    enabled: bool = True
+    # How long an element may call for heat without the sensor moving.
+    timeout_seconds: int = 120
+    # The rise that counts as "it is heating", in °C. Must clear sensor noise:
+    # the DS18B20s run at 10-bit here, which is ±0.5 °C.
+    min_rise_c: float = 1.0
+    # How far below its set value a regulating pot must be before it is judged.
+    # Matches the top auto-efficiency step, so this is "the curve wants 100 %".
+    min_headroom_c: float = 5.0
+    # Duty cycles below this are ignored — too little power to conclude anything.
+    # Rarely binding now that only regulating pots at full-power distance are
+    # judged; it still covers a pot regulating with auto-efficiency turned off.
+    min_efficiency: float = 25.0
+    # How often to repeat the spoken warning while a fault persists.
+    renotify_seconds: int = 600
+
+
+class ScreenSleepSettings(BaseModel):
+    """When the kiosk display powers itself down.
+
+    A Raspberry Pi has no suspend-to-RAM, so "sleep" here is the display only:
+    the backend keeps reading sensors, regulating and watchdogging throughout.
+    The frontend owns the idle timer (it is the only thing that sees touches)
+    and asks Electron to cut the panel; these values just live with the rest of
+    the rig's config so the Settings panel can edit them.
+
+    The display never sleeps while the rig is doing something — a heater on, a
+    pump running, or the brew timer counting. Walking away from a boil should
+    leave the temperatures readable from across the room.
+    """
+
+    enabled: bool = True
+    # Idle time before the display powers down. Counted from the last touch,
+    # key or pointer event, not from the last state change.
+    timeout_seconds: int = 300
+
+
 class AppSettings(BaseModel):
     model_config = ConfigDict(extra='allow')
 
@@ -261,6 +320,8 @@ class AppSettings(BaseModel):
     # config.json files keep validating.
     max_chart_points: int = 150
     auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
+    heat_fault: HeatFaultSettings = Field(default_factory=HeatFaultSettings)
+    screen_sleep: ScreenSleepSettings = Field(default_factory=ScreenSleepSettings)
 
 
 class Settings(BaseModel):
@@ -571,6 +632,149 @@ def _regulation_tick(config: Dict[str, Any]) -> None:
             _apply_efficiency(pot, target, config)
 
 
+# Per-pot heating watch. `since`/`baseline` are the open window: when the pot
+# started calling for heat and what the sensor read then. Both are cleared the
+# moment the pot stops calling, so an idle pot is never judged.
+_heat_watch: Dict[str, Dict[str, Any]] = {
+    "BK":  {"since": None, "baseline": None, "faulted_at": None},
+    "HLT": {"since": None, "baseline": None, "faulted_at": None},
+}
+
+# What the pots are called out loud. "BK" read as letters is not a word.
+_POT_SPOKEN_NAME = {"BK": "boil kettle", "HLT": "hot liquor tank"}
+
+
+def _reset_heat_watch(pot: str) -> None:
+    watch = _heat_watch[pot]
+    watch["since"] = None
+    watch["baseline"] = None
+    watch["faulted_at"] = None
+    bruce_client.reset_cooldown(f"heat-fault-{pot}")
+
+
+def _heat_fault_tick(config: Dict[str, Any]) -> None:
+    """Watch for an element that is switched on but isn't heating its pot.
+
+    Runs after _regulation_tick in the 1 s loop, so it reads the pot state that
+    regulation just settled on — a pot switched off for reaching its set value
+    disarms here in the same tick rather than being judged on the way down.
+
+    Deliberately does NOT touch the hardware. Every other safety rule in this
+    file cuts power (over-temp, stalled sensor loop) because those are certain;
+    this one is an inference from a temperature that hasn't moved yet, and a
+    false positive on a big cold mash would kill a brew day for nothing. It
+    warns, and leaves the decision to the brewer.
+    """
+    logger = logging.getLogger(__name__)
+    cfg = config.get("app", {}).get("heat_fault", {})
+    if not cfg.get("enabled", True):
+        for pot in ("BK", "HLT"):
+            if _heat_watch[pot]["since"] is not None:
+                _reset_heat_watch(pot)
+        return
+
+    timeout = max(1, int(cfg.get("timeout_seconds", 120)))
+    min_rise = float(cfg.get("min_rise_c", 1.0))
+    min_headroom = float(cfg.get("min_headroom_c", 5.0))
+    min_efficiency = float(cfg.get("min_efficiency", 25.0))
+    renotify = max(1, int(cfg.get("renotify_seconds", 600)))
+    now = time.monotonic()
+
+    for pot in ("BK", "HLT"):
+        watch = _heat_watch[pot]
+        state = _control_state["pots"][pot]
+        pv = _temperature_cache.get(pot.lower())
+
+        # A pot only counts as calling for heat when a flat sensor would
+        # actually prove something: it is under regulation, far enough below its
+        # set value that the curve is asking for full power, and there is a
+        # reading to compare against. See HeatFaultSettings for why this is the
+        # only unambiguous case — a manual pot, or one closing in on its set
+        # value, is running at a duty cycle that need not move the temperature.
+        headroom = state["sv"] - pv if pv is not None else 0.0
+        calling_for_heat = (
+            state["heaterOn"]
+            and pv is not None
+            and state["regulationEnabled"]
+            and headroom > min_headroom
+            and state["efficiency"] >= min_efficiency
+        )
+
+        if not calling_for_heat:
+            if watch["faulted_at"] is not None:
+                logger.info("%s heating fault cleared — pot no longer calling for heat", pot)
+            if watch["since"] is not None:
+                _reset_heat_watch(pot)
+            continue
+
+        if watch["since"] is None:
+            watch["since"] = now
+            watch["baseline"] = pv
+            continue
+
+        rise = pv - watch["baseline"]
+
+        # It is heating. Slide the window forward so the test is always "did it
+        # gain min_rise_c in the last timeout seconds", not "since it switched
+        # on" — otherwise a pot that has been climbing for an hour could never
+        # report a fault when its element dies mid-climb.
+        if rise >= min_rise:
+            if watch["faulted_at"] is not None:
+                logger.info("%s is heating again (+%.1f°C) — fault cleared", pot, rise)
+                bruce_client.reset_cooldown(f"heat-fault-{pot}")
+            watch["since"] = now
+            watch["baseline"] = pv
+            watch["faulted_at"] = None
+            continue
+
+        if now - watch["since"] < timeout:
+            continue
+
+        if watch["faulted_at"] is None:
+            watch["faulted_at"] = now
+            logger.error(
+                "%s heating fault: regulating to %.1f°C at %.0f%% for %ds but %.1f°C → %.1f°C "
+                "(+%.1f°C, expected +%.1f°C). Check the element connection and the sensor.",
+                pot, state["sv"], state["efficiency"], timeout, watch["baseline"], pv, rise, min_rise,
+            )
+
+        minutes = timeout // 60
+        window = f"{minutes} minutes" if minutes >= 1 else f"{timeout} seconds"
+        bruce_client.speak_soon(
+            f"Heads up — the {_POT_SPOKEN_NAME[pot]} element has been on at "
+            f"{state['efficiency']:.0f} percent for {window}, but the temperature has "
+            f"barely moved. It is still at {pv:.1f} degrees, heading for {state['sv']:.0f}. "
+            f"Please check that the element is connected and that the sensor is in the pot.",
+            key=f"heat-fault-{pot}",
+            cooldown_seconds=renotify,
+        )
+
+
+def _heat_fault_report() -> Dict[str, Any]:
+    """The watcher's state for the UI, as {pot: {...}}.
+
+    `active` is what the banner keys off; the rest is there so the card can say
+    how long it has been wrong and by how much, rather than only that it is.
+    """
+    report: Dict[str, Any] = {}
+    now = time.monotonic()
+    for pot in ("BK", "HLT"):
+        watch = _heat_watch[pot]
+        faulted_at = watch["faulted_at"]
+        if faulted_at is None:
+            report[pot] = {"active": False}
+            continue
+        pv = _temperature_cache.get(pot.lower())
+        baseline = watch["baseline"]
+        report[pot] = {
+            "active": True,
+            "seconds": int(now - watch["since"]) if watch["since"] is not None else 0,
+            "baseline": round(baseline, 1) if baseline is not None else None,
+            "rise": round(pv - baseline, 1) if pv is not None and baseline is not None else None,
+        }
+    return report
+
+
 @app.post("/api/hardware/initialize")
 async def initialize_hardware() -> Dict[str, str]:
     """Initialize all GPIO pins to LOW and start a new temperature log session"""
@@ -581,6 +785,8 @@ async def initialize_hardware() -> Dict[str, str]:
     for pump in _control_state["pumps"].values():
         pump["on"] = False
         pump["speed"] = 0.0
+    for pot_name in _heat_watch:
+        _reset_heat_watch(pot_name)
     session_logger.start_new_session()
     return {"status": "ok"}
 
@@ -701,6 +907,7 @@ async def get_full_state() -> Dict[str, Any]:
         "temperatures": _temperature_cache,
         "controlState": _control_state,
         "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]},
+        "heatFaults": _heat_fault_report(),
     }
 
 
@@ -760,6 +967,37 @@ async def get_temperature_history(since: Optional[int] = None) -> list:
 async def get_temperatures() -> Dict[str, Any]:
     """Return the latest cached DS18B20 temperature readings"""
     return _temperature_cache
+
+
+# ─── Bruce (voice, on the BrewPlanner Pi) ─────────────────────────────────────
+#
+# One door out to the brewery speaker, for the whole rig. The touchscreen UI, the
+# fault watcher above, and anything added later all go through here rather than
+# each holding its own copy of the web server's address — and none of them can
+# break a brew by failing to be heard (see bruce_client for why every path
+# swallows its errors).
+
+
+class BruceSpeakRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=bruce_client.MAX_MESSAGE_CHARS)
+
+
+@app.post("/api/bruce/speak")
+async def bruce_speak(body: BruceSpeakRequest) -> Dict[str, Any]:
+    """Say a message out loud through Bruce on the BrewPlanner Pi.
+
+    Answers 200 with `spoken: false` rather than an error status when Bruce is
+    unreachable: the caller is a touchscreen in a brewery, and a failed
+    announcement is not a failed action.
+    """
+    spoken = await bruce_client.speak(body.message)
+    return {"status": "ok", "spoken": spoken, "configured": bruce_client.is_configured()}
+
+
+@app.get("/api/bruce/status")
+async def bruce_status() -> Dict[str, Any]:
+    """Whether the rig can reach Bruce — for the Settings panel's indicator."""
+    return await bruce_client.status()
 
 
 # ─── Brewer's Friend recipe endpoint ──────────────────────────────────────────
