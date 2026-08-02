@@ -46,6 +46,7 @@ function RecipePage() {
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
+  const restoredRecipeId = useRef(selectedRecipe?.id);
   const [loading, setLoading] = useState(recipesCache == null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -140,6 +141,25 @@ function RecipePage() {
   // app session) — browsing between tabs reuses the cached list.
   useEffect(() => {
     if (recipesCache == null) fetchRecipes();
+  }, []);
+
+  // A brew day in progress on BrewPlanner means the brewer is standing at the
+  // rig working through that recipe, so open straight into it. This runs on
+  // every mount — i.e. every time the tab is opened — so backing out to the
+  // list lasts for that visit only, and reopening returns to the active brew.
+  useEffect(() => {
+    const alreadyOpen = String(restoredRecipeId.current ?? '');
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/brew-planner/active-brew');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (cancelled || !data.recipeId || data.recipeId === alreadyOpen) return;
+        selectRecipe(data.recipeId);
+      } catch { /* no web server — leave the list as it is */ }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Scroll to top when switching views

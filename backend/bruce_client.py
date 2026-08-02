@@ -27,11 +27,13 @@ and answers False.
 
 import asyncio
 import logging
-import os
 import time
 from typing import Dict, Optional, Set
 
 import httpx
+
+import brew_planner
+from brew_planner import base_url
 
 logger = logging.getLogger(__name__)
 
@@ -54,27 +56,12 @@ _pending: Set["asyncio.Task"] = set()
 _last_attempt: Dict[str, float] = {}
 
 
-def base_url() -> Optional[str]:
-    """Where BrewPlanner lives on the LAN, e.g. `http://192.168.3.3:3000`.
-
-    Unset means the feature is off: a rig on the bench with no web server is a
-    normal way to run this backend, not a misconfiguration to complain about.
-    """
-    url = os.getenv("BREW_PLANNER_URL", "").strip().rstrip("/")
-    return url or None
-
-
 def is_configured() -> bool:
     """Whether a BrewPlanner address is set. Says nothing about reachability."""
     return base_url() is not None
 
 
-def _headers() -> Dict[str, str]:
-    headers = {"Content-Type": "application/json"}
-    token = os.getenv("BREW_PLANNER_TOKEN", "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
+_headers = brew_planner.headers
 
 
 async def speak(

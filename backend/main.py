@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+import brew_planner
 import bruce_client
 import utils_rpi
 from session_logger import session_logger
@@ -998,6 +999,18 @@ async def bruce_speak(body: BruceSpeakRequest) -> Dict[str, Any]:
 async def bruce_status() -> Dict[str, Any]:
     """Whether the rig can reach Bruce — for the Settings panel's indicator."""
     return await bruce_client.status()
+
+
+@app.get("/api/brew-planner/active-brew")
+async def get_active_brew() -> Dict[str, Any]:
+    """Whether BrewPlanner has a brew day in progress, and on which recipe.
+
+    Lets the Recipe tab open straight into what is being brewed instead of
+    making the brewer find it in the list. Answers 200 with `active: false`
+    when the web server is unreachable — no brew day showing is the right
+    outcome there, not an error on a touchscreen.
+    """
+    return await brew_planner.active_brew()
 
 
 # ─── Brewer's Friend recipe endpoint ──────────────────────────────────────────
