@@ -13,7 +13,6 @@ const APP_DEFAULTS = {
   bk_element_watts: DEFAULT_BK_ELEMENT_WATTS,
   hlt_element_watts: DEFAULT_HLT_ELEMENT_WATTS,
   cursor_visibility: 'auto',
-  brewing_panel_poll_seconds: 1,
   screen_sleep: DEFAULT_SCREEN_SLEEP,
 };
 

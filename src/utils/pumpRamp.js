@@ -1,5 +1,6 @@
 import { brewSystem } from './mockHardware';
 import { hardwareApi } from './hardwareApi';
+import { markCommand } from './commandClock';
 
 const RAMP_RATE_PCT_PER_SEC = 50;
 const STEP_INTERVAL_MS = 40;
@@ -15,6 +16,10 @@ const state = {
 
 function send(pumpName, value) {
   const v = Math.round(value);
+  // Every step of the ramp is a command in its own right: the panel must keep
+  // showing the target the brewer chose, not the intermediate the rig is
+  // passing through on its way there.
+  markCommand();
   brewSystem.setPumpSpeed(pumpName, v);
   if (isProduction()) hardwareApi.setPumpSpeed(pumpName, v);
 }

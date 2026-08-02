@@ -78,10 +78,11 @@ mockHardware.js (Singleton)
         └── pumps: { P1, P2 }
             └── { on, speed }
 
-        ↓ (Polled every 500ms)
+        ↓ (Dev only: sampled every 1s. In production the backend
+           pushes state over /api/ws — see "Live State Push" below)
 
 BrewingPanel
-    ├── useEffect → polls brewSystem.getAllStates()
+    ├── useSyncExternalStore → liveState.js (production)
     ├── Passes state to child components as props
     │
     ├→ PotCard receives potState
@@ -114,10 +115,43 @@ brewSystem API method
     ↓
 Hardware state updated
     ↓
-Next polling cycle picks up changes
+Backend diffs and pushes the change
     ↓
 UI updates via setState()
 ```
+
+## Live State Push
+
+The read path is a WebSocket, not a poll.
+
+```
+Anything that mutates state — the 1s sensor/regulation tick, a REST write,
+the safety watchdog — calls _schedule_broadcast(). It never awaits a send,
+so a wedged client cannot slow down heater control.
+    ↓
+_broadcast_loop() (backend/main.py) drains those requests at most every
+50ms, diffs the current state against what clients already hold, and sends
+only the difference. No difference, no message.
+    ↓
+/api/ws  →  every connected client
+    ↓
+src/utils/liveState.js merges the diff into the state it holds, cloning
+only the branches the diff touched, and notifies subscribers.
+    ↓
+BrewingPanel and TemperatureChart read it via useSyncExternalStore.
+```
+
+**Why identity-preserving merges**: BrewTimer re-syncs its display whenever
+its slice of state changes identity. If a temperature update rebuilt the whole
+tree, the timer would be nudged back to the last value the server sent once a
+second, fighting its own local tick. Only changed branches get new objects.
+
+**Optimistic writes**: the panel shows the value the brewer just chose while
+the write is still in flight, so a diff crossing it on the wire would snap the
+control back for a frame. `src/utils/commandClock.js` records when the UI last
+wrote; pushed control state is ignored for a short window after that. The pump
+ramp stamps the same clock on every step, so a slider stays on its target for
+the whole ramp rather than following the hardware through it.
 
 ## Hardware Abstraction Layer
 
@@ -226,14 +260,14 @@ Each component manages its own local UI state:
 
 Single source of truth in `brewSystem` singleton:
 
-- Polled every 500ms by `BrewingPanel`
+- Pushed to `BrewingPanel` by the backend whenever it changes
 - Updates propagated to children via props
 - Local state reconciled with hardware state
 
 ### Why This Pattern?
 
 1. **Immediate UI feedback** - Sliders respond instantly to touch
-2. **Eventual consistency** - Hardware state catches up via polling
+2. **Eventual consistency** - Hardware state catches up on the next push
 3. **Simple state model** - No complex state management library needed
 4. **Hardware agnostic** - UI doesn't care if hardware is mock or real
 
@@ -410,7 +444,8 @@ Breakdown:
 - **FPS**: 60fps on Raspberry Pi 4
 - **Memory**: ~50MB (Chrome process)
 - **CPU**: ~5% idle, ~8% when heating/animating
-- **Polling**: 500ms interval (2 requests/sec)
+- **Network**: one WebSocket per client; frames only when state changes,
+  plus a 10s heartbeat when it doesn't
 
 ### Optimization Techniques
 

@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
+import { subscribeLiveState, getLiveState } from '../../utils/liveState';
+import { markCommand, msSinceCommand } from '../../utils/commandClock';
 import { setPumpRampTarget, setPumpRampPower } from '../../utils/pumpRamp';
 import { useSettings, FALLBACK_AUTO_EFFICIENCY } from '../../contexts/SettingsContext';
 import { DEFAULT_BK_ELEMENT_WATTS, DEFAULT_HLT_ELEMENT_WATTS } from '../../utils/appDefaults';
@@ -9,18 +11,23 @@ import PumpCard from './PumpCard';
 import BrewTimer from './BrewTimer';
 import styles from './BrewingPanel.module.css';
 
+// How long after a command the pushed control state is ignored. A diff can
+// cross a command on the wire — the slider is already at its new value locally
+// while the write is still in flight — and applying it would snap the control
+// back for a frame. Short, because the backend pushes the truth the instant it
+// has applied the write; there is nothing to wait out but the round trip.
+const COMMAND_SUPPRESS_MS = 750;
+
 function BrewingPanel() {
   const { settings } = useSettings();
   const [states, setStates] = useState(brewSystem.getAllStates());
   const [timerState, setTimerState] = useState({ running: false, seconds: 0, target: 0 });
   const [priorityPot, setPriorityPot] = useState('BK');
-  // Backend reachability — after several failed polls the readings on screen
-  // are stale, which must be unmissable on a heater controller.
-  // frozenSince holds the wall-clock time of the last successful sync,
-  // snapshotted into state when the connection is declared lost.
-  const [frozenSince, setFrozenSince] = useState(null);
-  const pollFailures = useRef(0);
-  const lastSyncRef = useRef(null);
+  // Live backend state, pushed over one WebSocket. `frozenSince` is the
+  // wall-clock time of the last good sync once the connection is declared
+  // lost — stale readings must be unmissable on a heater controller.
+  const live = useSyncExternalStore(subscribeLiveState, getLiveState);
+  const frozenSince = live.frozenSince;
   // Pots whose element is on but whose sensor isn't rising — decided by the
   // backend watcher (see _heat_fault_tick), not here, so the warning is the same
   // whether anyone has this screen open. Bruce says it out loud; this shows it.
@@ -32,7 +39,6 @@ function BrewingPanel() {
   // enforces the same values, these only drive the display/caps here.
   const BK_MAX_WATTS = settings?.app?.bk_element_watts ?? DEFAULT_BK_ELEMENT_WATTS;
   const HLT_MAX_WATTS = settings?.app?.hlt_element_watts ?? DEFAULT_HLT_ELEMENT_WATTS;
-  const pollSeconds = settings?.app?.brewing_panel_poll_seconds ?? 1;
   // Per-pot regulation configs — each pot's effect deps will only fire when its own config changes.
   const bkRegConfig = useMemo(
     () => ({
@@ -63,10 +69,27 @@ function BrewingPanel() {
     }
   }, [isProduction, bkRegConfig, hltRegConfig]);
 
-  // Timestamp of the last user-initiated command.  Polling is suppressed for a
-  // short window after a command so that stale backend responses cannot
-  // overwrite the optimistic local state.
-  const lastCommandTime = useRef(0);
+  // A nonce bumped once the suppression window finally closes. Without it, a
+  // push dropped during the window would be the last word until something else
+  // changed, stranding the panel on its optimistic value.
+  const [commandSettled, setCommandSettled] = useState(0);
+  const settleTimer = useRef(null);
+  const noteCommand = useCallback(() => {
+    markCommand();
+    // A pump ramp keeps writing for up to two seconds after the touch that
+    // started it, so wait out the last write rather than the first.
+    const settle = () => {
+      const remaining = COMMAND_SUPPRESS_MS - msSinceCommand();
+      if (remaining > 0) {
+        settleTimer.current = setTimeout(settle, remaining + 20);
+        return;
+      }
+      setCommandSettled((n) => n + 1);
+    };
+    clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(settle, COMMAND_SUPPRESS_MS + 20);
+  }, []);
+  useEffect(() => () => clearTimeout(settleTimer.current), []);
 
   // Keep a ref to current state so stable callbacks can read fresh values
   // without appearing in useCallback dependency arrays.
@@ -79,85 +102,57 @@ function BrewingPanel() {
   const elementWattsRef = useRef({ bk: BK_MAX_WATTS, hlt: HLT_MAX_WATTS });
   elementWattsRef.current = { bk: BK_MAX_WATTS, hlt: HLT_MAX_WATTS };
 
+  // Apply whatever the backend last pushed.
+  //
+  // NOTE: no hardware initialization here. GPIO init happens once in the
+  // backend's lifespan — a browser reload mid-brew must never kill heaters or
+  // wipe the session log. The socket's opening snapshot is the whole sync.
+  //
+  // This runs on every push, and a push only happens when something changed,
+  // so a rig sitting at temperature does no work at all.
   useEffect(() => {
-    // NOTE: no hardware initialization here. GPIO init happens once in the
-    // backend's lifespan — a browser reload mid-brew must never kill heaters
-    // or wipe the session log. On mount we only sync state from the backend.
-    if (isProduction) {
-      hardwareApi.getFullState().then((state) => {
-        if (state) {
-          setStates((prev) => ({
-            pots: {
-              BK:  { ...prev.pots.BK,  pv: state.temperatures.bk,  ...state.controlState.pots.BK  },
-              MLT: { ...prev.pots.MLT, pv: state.temperatures.mlt },
-              HLT: { ...prev.pots.HLT, pv: state.temperatures.hlt, ...state.controlState.pots.HLT },
-            },
-            pumps: {
-              P1: { ...prev.pumps.P1, ...state.controlState.pumps.P1 },
-              P2: { ...prev.pumps.P2, ...state.controlState.pumps.P2 },
-            },
-          }));
-          setHeatFaults(state.heatFaults ?? {});
-        }
-      });
-    }
+    if (!isProduction) return;
+    const state = live.state;
+    if (!state) return; // socket not up yet
+    const { temperatures, controlState } = state;
+    // Control state is held back briefly after a local command; temperatures,
+    // the timer and the fault watcher never are. See COMMAND_SUPPRESS_MS.
+    const suppressed = msSinceCommand() < COMMAND_SUPPRESS_MS;
+    setStates((prev) => ({
+      pots: {
+        BK:  { ...prev.pots.BK,  pv: temperatures.bk,  ...(suppressed ? null : controlState.pots.BK)  },
+        MLT: { ...prev.pots.MLT, pv: temperatures.mlt },
+        HLT: { ...prev.pots.HLT, pv: temperatures.hlt, ...(suppressed ? null : controlState.pots.HLT) },
+      },
+      pumps: {
+        P1: { ...prev.pumps.P1, ...(suppressed ? null : controlState.pumps.P1) },
+        P2: { ...prev.pumps.P2, ...(suppressed ? null : controlState.pumps.P2) },
+      },
+    }));
+    // Both keep their identity across pushes that didn't touch them, so the
+    // timer card isn't nudged into re-syncing its display by a temperature.
+    if (state.timer) setTimerState(state.timer);
+    if (state.heatFaults) setHeatFaults(state.heatFaults);
+  }, [isProduction, live, commandSettled]);
 
-    // Poll full state at the user-configured cadence (app.brewing_panel_poll_seconds,
-    // default 1 s — matches the DS18B20 read loop) so external changes (e.g. Bruce
-    // voice assistant) are reflected in the UI. Polling is skipped for 2 s after
-    // the last user command to avoid stale responses overwriting optimistic state.
-    const POLL_SUPPRESS_MS = 2000;
-    const CONNECTION_LOST_AFTER = 3; // consecutive failed polls
-    const interval = setInterval(async () => {
-      if (isProduction) {
-        if (Date.now() - lastCommandTime.current < POLL_SUPPRESS_MS) return;
-        const state = await hardwareApi.getFullState();
-        if (state) {
-          pollFailures.current = 0;
-          lastSyncRef.current = Date.now();
-          setFrozenSince(null);
-          // If a command was sent while the request was in-flight, discard this
-          // response — it may contain stale control state.
-          if (Date.now() - lastCommandTime.current < POLL_SUPPRESS_MS) return;
-          setStates((prev) => ({
-            pots: {
-              BK:  { ...prev.pots.BK,  pv: state.temperatures.bk,  ...state.controlState.pots.BK  },
-              MLT: { ...prev.pots.MLT, pv: state.temperatures.mlt },
-              HLT: { ...prev.pots.HLT, pv: state.temperatures.hlt, ...state.controlState.pots.HLT },
-            },
-            pumps: {
-              P1: { ...prev.pumps.P1, ...state.controlState.pumps.P1 },
-              P2: { ...prev.pumps.P2, ...state.controlState.pumps.P2 },
-            },
-          }));
-          if (state.timer) setTimerState(state.timer);
-          setHeatFaults(state.heatFaults ?? {});
-        } else {
-          // Backend unreachable — after a few misses, warn loudly instead of
-          // silently showing frozen readings on a device that drives heaters.
-          pollFailures.current += 1;
-          if (pollFailures.current >= CONNECTION_LOST_AFTER) {
-            setFrozenSince((prev) => prev ?? lastSyncRef.current ?? Date.now());
-          }
-        }
-      } else {
-        // Sync full pot state from the mock — regulation now runs inside the
-        // mock (mirroring the backend), so heaterOn/efficiency can change
-        // without user input and must be reflected here.
-        const mock = brewSystem.getAllStates();
-        setStates((prev) => ({
-          ...prev,
-          pots: {
-            BK:  { ...prev.pots.BK,  ...mock.pots.BK },
-            MLT: { ...prev.pots.MLT, pv: mock.pots.MLT.pv },
-            HLT: { ...prev.pots.HLT, ...mock.pots.HLT },
-          },
-        }));
-      }
-    }, pollSeconds * 1000);
-
+  // Dev mode: the mock is the hardware, so sample it at the cadence its own
+  // simulation ticks. Regulation runs inside the mock (mirroring the backend),
+  // so heaterOn/efficiency change without user input and must be picked up.
+  useEffect(() => {
+    if (isProduction) return undefined;
+    const interval = setInterval(() => {
+      const mock = brewSystem.getAllStates();
+      setStates((prev) => ({
+        ...prev,
+        pots: {
+          BK:  { ...prev.pots.BK,  ...mock.pots.BK },
+          MLT: { ...prev.pots.MLT, pv: mock.pots.MLT.pv },
+          HLT: { ...prev.pots.HLT, ...mock.pots.HLT },
+        },
+      }));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [isProduction, pollSeconds]);
+  }, [isProduction]);
 
   // Debounce timers for hardware API calls — prevents flooding the RPi backend
   const apiTimers = useRef({});
@@ -167,7 +162,7 @@ function BrewingPanel() {
   }, []);
 
   const handlePotUpdate = useCallback((potName, updates) => {
-    lastCommandTime.current = Date.now();
+    noteCommand();
     const s = statesRef.current;
     const mw = maxWattsRef.current;
     const { bk: bkMaxW, hlt: hltMaxW } = elementWattsRef.current;
@@ -252,10 +247,10 @@ function BrewingPanel() {
       }
       return next;
     });
-  }, [isProduction, debouncedApi]);
+  }, [isProduction, debouncedApi, noteCommand]);
 
   const handlePumpUpdate = useCallback((pumpName, updates) => {
-    lastCommandTime.current = Date.now();
+    noteCommand();
     if (updates.speed !== undefined) {
       setPumpRampTarget(pumpName, updates.speed);
     }
@@ -268,7 +263,7 @@ function BrewingPanel() {
       ...prev,
       pumps: { ...prev.pumps, [pumpName]: { ...prev.pumps[pumpName], ...updates } },
     }));
-  }, [isProduction]);
+  }, [isProduction, noteCommand]);
 
   // Derive effective (throttled) power and slider caps — priority pot gets its requested
   // efficiency; the other pot yields to fit within the remaining headroom.

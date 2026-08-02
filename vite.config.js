@@ -9,6 +9,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        // /api/ws is the live state push — without this the upgrade request
+        // is proxied as a plain GET and the socket never opens.
+        ws: true,
       }
     }
   },

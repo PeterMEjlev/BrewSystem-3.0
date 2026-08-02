@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -7,11 +8,11 @@ import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -67,6 +68,10 @@ async def _temperature_read_loop():
             _heat_fault_tick(config)
         except Exception as e:
             logger.error("Temp read/regulation error: %s", e)
+        # Offer the tick's result to the sockets. Nothing goes out unless
+        # something actually moved, so a rig sitting at a stable temperature
+        # with nobody touching it is silent.
+        _schedule_broadcast()
         elapsed = time.monotonic() - start
         await asyncio.sleep(max(0.05, loop_period - elapsed))
 
@@ -94,18 +99,25 @@ async def _safety_watchdog_loop():
                             _SENSOR_STALE_SECONDS, pot,
                         )
                         _apply_pot_power(pot, False, config)
+                        _schedule_broadcast()
         except Exception as e:
             logger.error("Watchdog error: %s", e)
 
 
 async def _temperature_log_loop():
-    """Background task: log cached temperatures at the configured interval."""
+    """Background task: log cached temperatures at the configured interval.
+
+    The row it just wrote is pushed to the sockets, so the chart grows a point
+    at a time instead of asking the backend whether there is anything new.
+    """
     while True:
         config = read_config()
         interval = config.get("app", {}).get("log_interval_seconds", 10)
         await asyncio.sleep(interval)
         try:
-            session_logger.log_reading(**_temperature_cache)
+            row = session_logger.log_reading(**_temperature_cache)
+            if row is not None:
+                await _broadcast({"type": "log", "row": row})
         except Exception as e:
             logging.getLogger(__name__).error("Temp log error: %s", e)
 
@@ -159,14 +171,18 @@ async def lifespan(app: FastAPI):
         serial = sensors.get(pot)
         if serial:
             utils_rpi.initialize_ds18b20_resolution(serial, resolution="10")
+    global _ws_lock, _broadcast_wanted
+    _ws_lock = asyncio.Lock()
+    _broadcast_wanted = asyncio.Event()
     read_task = asyncio.create_task(_temperature_read_loop())
     log_task = asyncio.create_task(_temperature_log_loop())
     watchdog_task = asyncio.create_task(_safety_watchdog_loop())
+    broadcast_task = asyncio.create_task(_broadcast_loop())
     yield
-    read_task.cancel()
-    log_task.cancel()
-    watchdog_task.cancel()
-    for task in (read_task, log_task, watchdog_task):
+    tasks = (read_task, log_task, watchdog_task, broadcast_task)
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
         try:
             await task
         except asyncio.CancelledError:
@@ -311,7 +327,6 @@ class AppSettings(BaseModel):
     model_config = ConfigDict(extra='allow')
 
     log_interval_seconds: int = 10
-    brewing_panel_poll_seconds: int = 1
     max_watts: int = 11000
     # Rated power of each heating element — single source of truth; the
     # frontend and Bruce read these via /api/settings.
@@ -776,6 +791,242 @@ def _heat_fault_report() -> Dict[str, Any]:
     return report
 
 
+# ─── Live state push ──────────────────────────────────────────────────────────
+#
+# The read path is a push, not a poll. A client opens one socket, is handed a
+# full snapshot, and from then on receives only what changed. Two things fall
+# out of that: a rig nobody is touching puts almost nothing on the wire, and a
+# heater toggle reaches the screen in milliseconds instead of on the next poll
+# tick. Writes stay on REST — every mutating endpoint below asks for a push
+# once it has applied its change.
+#
+# Nothing here is allowed to affect control. Broadcasts are scheduled, never
+# awaited, by the code that mutates state, so a wedged client cannot slow the
+# regulation loop down.
+
+_ws_clients: Set[WebSocket] = set()
+# Every send is taken under this lock. Two coroutines writing to one socket
+# would interleave frames, and a diff must never overtake the snapshot a
+# joining client is being given.
+#
+# Both primitives are built in lifespan rather than here: before Python 3.10
+# they bind to whichever loop exists when they are constructed, which at import
+# time is not the one uvicorn goes on to run. Nothing can reach them earlier —
+# routes only serve, and the loops only run, after startup has finished.
+_ws_lock: Optional[asyncio.Lock] = None
+# Raised by anything that mutates state; the broadcast loop drains it.
+_broadcast_wanted: Optional[asyncio.Event] = None
+# What every connected client has already been told — the baseline diffs are
+# computed against.
+_last_pushed_view: Dict[str, Any] = {}
+_last_resync = 0.0
+
+# Some values tick by themselves: a running timer's seconds, and how long a
+# heating fault has stood. Diffing those would put a frame on the wire every
+# second on a rig where nothing is happening — the very thing this replaces —
+# so they sit out of change detection and ride a slow resync instead. The
+# browser counts the timer locally in between.
+_SELF_TICKING_RESYNC_SECONDS = 10.0
+# How long the socket may stay quiet before saying so. A silent rig and a
+# connection that died mid-frame look identical from the other end otherwise.
+_HEARTBEAT_SECONDS = 10.0
+# Floor on how often diffs go out. A pump ramp writes its speed every 40 ms;
+# without this, each step would be its own frame.
+_MIN_PUSH_INTERVAL = 0.05
+# A client that has stopped reading (a phone carried out of Wi-Fi range) must
+# not be able to hold the send lock, and with it every other client, forever.
+_SEND_TIMEOUT_SECONDS = 5.0
+
+_MISSING = object()
+
+
+def _state_snapshot() -> Dict[str, Any]:
+    """Everything the read path serves, in the shape clients hold it in.
+
+    Deliberately the same shape as GET /api/hardware/state — the REST endpoint
+    remains the one-shot way to ask the same question.
+    """
+    return {
+        "temperatures": dict(_temperature_cache),
+        "controlState": copy.deepcopy(_control_state),
+        "timer": {
+            "running": _timer_state["running"],
+            "seconds": _get_timer_seconds(),
+            "target": _timer_state["target"],
+        },
+        "heatFaults": _heat_fault_report(),
+    }
+
+
+def _comparable(state: Dict[str, Any]) -> Dict[str, Any]:
+    """The snapshot with the self-ticking counters dropped, for change detection."""
+    view = copy.deepcopy(state)
+    view["timer"].pop("seconds", None)
+    for fault in view["heatFaults"].values():
+        fault.pop("seconds", None)
+    return view
+
+
+def _diff(old: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursive diff of two state dicts — only the leaves that changed.
+
+    Keys the new state doesn't have are not reported: the state's shape is
+    fixed, so a missing key means a bug rather than a deletion to replay.
+    """
+    patch: Dict[str, Any] = {}
+    for key, new_value in new.items():
+        old_value = old.get(key, _MISSING)
+        if isinstance(new_value, dict) and isinstance(old_value, dict):
+            sub = _diff(old_value, new_value)
+            if sub:
+                patch[key] = sub
+        elif old_value is _MISSING or old_value != new_value:
+            patch[key] = new_value
+    return patch
+
+
+def _schedule_broadcast() -> None:
+    """Ask for a push on the next broadcast tick.
+
+    Safe to call from anywhere that mutates state, as often as you like — a
+    burst of writes coalesces into one diff.
+    """
+    if _broadcast_wanted is not None:
+        _broadcast_wanted.set()
+
+
+async def _send_to_clients(message: Dict[str, Any]) -> None:
+    """Fan one message out, dropping clients it could not be delivered to.
+
+    Caller holds _ws_lock. A dropped client stays parked in its endpoint
+    coroutine until its socket finally errors; it just stops being written to.
+    """
+    if not _ws_clients:
+        return
+    targets = list(_ws_clients)
+    results = await asyncio.gather(
+        *(
+            asyncio.wait_for(client.send_json(message), _SEND_TIMEOUT_SECONDS)
+            for client in targets
+        ),
+        return_exceptions=True,
+    )
+    for client, result in zip(targets, results):
+        if isinstance(result, BaseException):
+            _ws_clients.discard(client)
+
+
+async def _broadcast(message: Dict[str, Any]) -> None:
+    """Send one message to every client, taking the send lock."""
+    if not _ws_clients or _ws_lock is None:
+        return
+    async with _ws_lock:
+        await _send_to_clients(message)
+
+
+async def _flush_state() -> bool:
+    """Push whatever has changed since the last flush. Caller holds _ws_lock.
+
+    Returns whether anything went out, which is what the heartbeat keys off.
+    """
+    global _last_pushed_view, _last_resync
+    if not _ws_clients:
+        return False
+
+    state = _state_snapshot()
+    view = _comparable(state)
+    patch = _diff(_last_pushed_view, view)
+
+    now = time.monotonic()
+    counting = state["timer"]["running"] or any(
+        fault["active"] for fault in state["heatFaults"].values()
+    )
+    if counting and now - _last_resync >= _SELF_TICKING_RESYNC_SECONDS:
+        patch.setdefault("timer", {})
+        for pot, fault in state["heatFaults"].items():
+            if fault["active"]:
+                patch.setdefault("heatFaults", {}).setdefault(pot, {})
+        _last_resync = now
+
+    if not patch:
+        return False
+
+    # Any section on its way out carries its live counter with it, so a client
+    # never sees `active: true` beside a duration frozen at the moment it began.
+    if "timer" in patch:
+        patch["timer"]["seconds"] = state["timer"]["seconds"]
+    for pot, fault_patch in patch.get("heatFaults", {}).items():
+        if state["heatFaults"][pot]["active"]:
+            fault_patch["seconds"] = state["heatFaults"][pot]["seconds"]
+
+    _last_pushed_view = view
+    await _send_to_clients({"type": "patch", "state": patch})
+    return True
+
+
+async def _broadcast_loop():
+    """The only place state diffs are sent — which is what keeps them ordered."""
+    logger = logging.getLogger(__name__)
+    last_sent = time.monotonic()
+    while True:
+        try:
+            await asyncio.wait_for(_broadcast_wanted.wait(), timeout=_HEARTBEAT_SECONDS)
+        except asyncio.TimeoutError:
+            pass
+        _broadcast_wanted.clear()
+        try:
+            async with _ws_lock:
+                sent = await _flush_state()
+                if (
+                    not sent
+                    and _ws_clients
+                    and time.monotonic() - last_sent >= _HEARTBEAT_SECONDS
+                ):
+                    await _send_to_clients({"type": "heartbeat"})
+                    sent = True
+                if sent:
+                    last_sent = time.monotonic()
+        except Exception as e:
+            logger.error("State broadcast error: %s", e)
+        # Coalesce the next burst rather than sending a frame per write.
+        await asyncio.sleep(_MIN_PUSH_INTERVAL)
+
+
+@app.websocket("/api/ws")
+async def live_state_socket(websocket: WebSocket):
+    """Live read path: a full snapshot on connect, diffs from then on.
+
+    Nothing is read from the client — commands go through the REST endpoints,
+    which schedule their own push. The receive loop exists only so a hang-up is
+    noticed promptly.
+    """
+    global _last_pushed_view
+    await websocket.accept()
+    async with _ws_lock:
+        # Catch the existing clients up first, so the baseline this one is
+        # handed is not one they are behind. Snapshot and baseline are taken
+        # with no await between them: a change landing during the send below
+        # will still be diffed against what was actually sent.
+        await _flush_state()
+        state = _state_snapshot()
+        _last_pushed_view = _comparable(state)
+        _ws_clients.add(websocket)
+        try:
+            await websocket.send_json({"type": "snapshot", "state": state})
+        except Exception:
+            _ws_clients.discard(websocket)
+            return
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logging.getLogger(__name__).debug("WebSocket receive ended: %s", e)
+    finally:
+        _ws_clients.discard(websocket)
+
+
 @app.post("/api/hardware/initialize")
 async def initialize_hardware() -> Dict[str, str]:
     """Initialize all GPIO pins to LOW and start a new temperature log session"""
@@ -789,6 +1040,11 @@ async def initialize_hardware() -> Dict[str, str]:
     for pot_name in _heat_watch:
         _reset_heat_watch(pot_name)
     session_logger.start_new_session()
+    _schedule_broadcast()
+    # The session log just started over, so every row a chart is holding
+    # belongs to a brew that is finished. Say so — a push-fed chart has no
+    # other way to find out, and would otherwise graph the old session forever.
+    await _broadcast({"type": "session_reset"})
     return {"status": "ok"}
 
 
@@ -799,6 +1055,7 @@ async def set_pot_power(pot: str, body: PotPowerRequest) -> Dict[str, str]:
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
     _apply_pot_power(pot, body.on, read_config())
+    _schedule_broadcast()
     return {"status": "ok"}
 
 
@@ -809,6 +1066,7 @@ async def set_pot_efficiency(pot: str, body: PotEfficiencyRequest) -> Dict[str, 
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
     _apply_efficiency(pot, body.value, read_config())
+    _schedule_broadcast()
     return {"status": "ok"}
 
 
@@ -830,6 +1088,7 @@ async def set_pump_power(pump: str, body: PumpPowerRequest) -> Dict[str, str]:
         utils_rpi.set_gpio_low(relay_pin)
         utils_rpi.stop_pwm_signal(pwm_pin)
 
+    _schedule_broadcast()
     return {"status": "ok"}
 
 
@@ -844,6 +1103,7 @@ async def set_pump_speed(pump: str, body: PumpSpeedRequest) -> Dict[str, str]:
     config = read_config()
     _, pwm_pin, _ = _pump_pin_map(pump, config)
     utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)
+    _schedule_broadcast()
     return {"status": "ok"}
 
 
@@ -854,6 +1114,7 @@ async def set_pot_sv(pot: str, body: PotSvRequest) -> Dict[str, str]:
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
     _control_state["pots"][pot]["sv"] = body.value
+    _schedule_broadcast()
     return {"status": "ok"}
 
 
@@ -864,6 +1125,7 @@ async def set_pot_regulation(pot: str, body: PotRegulationRequest) -> Dict[str, 
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
     _control_state["pots"][pot]["regulationEnabled"] = body.enabled
+    _schedule_broadcast()
     return {"status": "ok"}
 
 
@@ -894,6 +1156,7 @@ async def control_timer(body: TimerActionRequest) -> Dict[str, Any]:
         _timer_state["started_at"] = None
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use start, stop, reset, or set.")
+    _schedule_broadcast()
     return {"status": "ok", "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]}}
 
 
@@ -901,15 +1164,12 @@ async def control_timer(body: TimerActionRequest) -> Dict[str, Any]:
 async def get_full_state() -> Dict[str, Any]:
     """Return temperatures, control state, and timer in a single response.
 
-    Temperatures come from the in-memory cache updated by the background read
-    loop — this endpoint returns immediately without touching the 1-Wire bus.
+    The one-shot form of what /api/ws pushes — same shape, for callers that
+    want an answer now rather than a subscription (Bruce, the screen-sleep
+    idle check). Temperatures come from the in-memory cache updated by the
+    background read loop, so this returns without touching the 1-Wire bus.
     """
-    return {
-        "temperatures": _temperature_cache,
-        "controlState": _control_state,
-        "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]},
-        "heatFaults": _heat_fault_report(),
-    }
+    return _state_snapshot()
 
 
 @app.get("/api/temperature/average")

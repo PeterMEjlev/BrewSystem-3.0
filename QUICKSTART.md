@@ -293,7 +293,8 @@ sudo systemctl status lighttpd
 The application is already optimized for Raspberry Pi:
 
 - **Small bundle**: ~170KB gzipped
-- **Efficient updates**: Polling at 500ms intervals
+- **Efficient updates**: state is pushed over a WebSocket when it changes, so
+  an idle rig costs nothing and a toggle shows up in milliseconds
 - **GPU acceleration**: CSS transforms for animations
 - **Touch-optimized**: Large hit areas, no hover states
 - **Memory efficient**: Fixed-size chart buffer (120 points)

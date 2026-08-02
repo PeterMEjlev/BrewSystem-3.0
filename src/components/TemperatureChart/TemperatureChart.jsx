@@ -3,6 +3,7 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
+import { subscribeLogEvents } from '../../utils/liveState';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import styles from './TemperatureChart.module.css';
@@ -45,8 +46,16 @@ function appendRows(rows) {
   subscribers.forEach((fn) => fn());
 }
 
+function clearRows() {
+  if (persistedData.length === 0) return;
+  persistedData = [];
+  subscribers.forEach((fn) => fn());
+}
+
 // Incremental history fetch: first call pulls the whole session, subsequent
 // calls only rows newer than what we already hold (?since=<epoch_ms>).
+// Rows arrive over the socket as they are logged; this is for filling holes —
+// the first paint, and whatever was missed while a connection was down.
 let topUpInFlight = false;
 async function topUpFromServer() {
   if (topUpInFlight) return;
@@ -102,28 +111,43 @@ function TemperatureChart() {
     () => localStorage.getItem('brewSystemEnvironment') !== 'development'
   );
 
-  // Poll cadence follows the backend log interval — settings come from
-  // SettingsProvider, so changes apply without an app restart.
+  // Sampling cadence for dev mode only — production points arrive when the
+  // backend logs them. Settings come from SettingsProvider, so a change
+  // applies without an app restart.
   const logIntervalSeconds = settings?.app?.log_interval_seconds ?? 10;
 
-  // Data collection: in production, top up from the server history (the
-  // backend log loop is the single sampler); in dev, sample the mock locally.
+  // Data collection. In production the backend log loop is the single sampler
+  // and pushes each row as it writes it, so there is nothing to poll: the only
+  // fetches are the first paint and whatever a dropped connection missed.
   useEffect(() => {
-    const tick = () => {
-      if (isProduction) {
+    if (!isProduction) return undefined;
+    topUpFromServer(); // in case the socket was already up before we mounted
+    return subscribeLogEvents((event) => {
+      if (event.type === 'row') {
+        appendRows([{ ts: event.row.ts, bk: event.row.bk, mlt: event.row.mlt, hlt: event.row.hlt }]);
+      } else if (event.type === 'reset') {
+        // A new session started: every point held is from a finished brew.
+        clearRows();
+      } else if (event.type === 'resync') {
         topUpFromServer();
-      } else {
-        const states = brewSystem.getAllStates();
-        appendRows([{
-          ts: Date.now(),
-          bk: states.pots.BK.pv,
-          mlt: states.pots.MLT.pv,
-          hlt: states.pots.HLT.pv,
-        }]);
       }
+    });
+  }, [isProduction]);
+
+  // Dev mode: no backend, so sample the mock on a timer.
+  useEffect(() => {
+    if (isProduction) return undefined;
+    const sample = () => {
+      const states = brewSystem.getAllStates();
+      appendRows([{
+        ts: Date.now(),
+        bk: states.pots.BK.pv,
+        mlt: states.pots.MLT.pv,
+        hlt: states.pots.HLT.pv,
+      }]);
     };
-    tick();
-    const id = setInterval(tick, Math.max(1, logIntervalSeconds) * 1000);
+    sample();
+    const id = setInterval(sample, Math.max(1, logIntervalSeconds) * 1000);
     return () => clearInterval(id);
   }, [isProduction, logIntervalSeconds]);
 

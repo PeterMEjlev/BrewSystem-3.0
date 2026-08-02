@@ -23,7 +23,9 @@ class SessionLogger:
         with open(self._log_path, "w", newline="") as f:
             csv.writer(f).writerow(["timestamp", "epoch_ms", "bk", "mlt", "hlt"])
 
-    def log_reading(self, bk: Optional[float], mlt: Optional[float], hlt: Optional[float]) -> None:
+    def log_reading(
+        self, bk: Optional[float], mlt: Optional[float], hlt: Optional[float]
+    ) -> Optional[dict]:
         """Append one timestamped reading to the CSV and in-memory history.
 
         Each row carries both the human-readable ISO timestamp and an epoch
@@ -31,15 +33,19 @@ class SessionLogger:
         re-parsing ISO strings (incremental history fetch, averages).
 
         None means the sensor read failed — kept as None in history (JSON null)
-        and written as an empty CSV cell, so charts/averages skip it."""
+        and written as an empty CSV cell, so charts/averages skip it.
+
+        Returns the row that was written, so the caller can push it to the
+        connected charts without reading it back; None if no session is open."""
         if self._log_path is None:
-            return
+            return None
         epoch_ms = int(time.time() * 1000)
         ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         row = {"timestamp": ts, "ts": epoch_ms, "bk": bk, "mlt": mlt, "hlt": hlt}
         self._history.append(row)
         with open(self._log_path, "a", newline="") as f:
             csv.writer(f).writerow([ts, epoch_ms, bk, mlt, hlt])
+        return row
 
     def get_history(self, since_ms: Optional[int] = None) -> list[dict]:
         """Return readings logged in the current session.

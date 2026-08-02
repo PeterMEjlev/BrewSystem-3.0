@@ -39,9 +39,51 @@ src/
 │   └── BottomNav/         # Bottom navigation bar
 ├── utils/
 │   ├── mockHardware.js    # Hardware abstraction layer (mock)
+│   ├── hardwareApi.js     # REST writes to the backend
+│   ├── liveState.js       # Live state pushed over one WebSocket
 │   └── temperatureColor.js # Temperature gradient utilities
 └── App.jsx                # Main application shell
 ```
+
+## Live state
+
+Reads are pushed, writes are REST.
+
+Every client holds one WebSocket to `/api/ws`. The backend sends a full
+snapshot when it opens, and after that only what changed — so a rig nobody is
+touching puts nothing on the wire, and a heater toggle is on screen in
+milliseconds rather than on the next poll tick. Adding a second client (a phone
+watching the boil) costs one more socket, not another stream of requests.
+
+```
+sensor sweep / regulation tick / REST write / watchdog
+        ↓  (schedules a push — never waits for one)
+broadcast loop  →  diff against what clients already have
+        ↓  (nothing changed → nothing sent)
+   /api/ws  →  every connected client
+        ↓
+liveState.js  →  merges the diff, notifies subscribers
+        ↓
+BrewingPanel · TemperatureChart
+```
+
+Worth knowing:
+
+- **Commands still go over REST** (`POST /api/hardware/...`). Only the read
+  path moved. `GET /api/hardware/state` remains as the one-shot form of the
+  same data, for callers that want an answer rather than a subscription.
+- **Two values are deliberately not diffed**: a running timer's seconds and how
+  long a heating fault has stood both tick on their own, and diffing them would
+  put a frame on the wire every second on an idle rig. They resync every 10 s
+  and the browser counts in between.
+- **Silence is reported**: with nothing to say the backend heartbeats every
+  10 s, because a quiet rig and a socket that died mid-frame look identical
+  otherwise. A client that hears nothing for 25 s reconnects; one that has been
+  disconnected for 3 s puts a warning across the brewing screen rather than
+  leaving stale temperatures on a device that drives heaters.
+- **Chart points are pushed as they are logged.** The history endpoint is still
+  there, used for the first paint and to fill whatever a dropped connection
+  missed.
 
 ## Development
 
@@ -301,7 +343,8 @@ Two operational rules keep that safe:
    `BrewPlanner/deploy/brewplanner.env.example`).
 
 Both UIs stay consistent automatically — this backend is the single source of
-truth, and each UI polls it.
+truth, and it pushes changes to whoever is connected (see
+[Live state](#live-state)).
 
 ### Speaking through Bruce
 
@@ -488,8 +531,9 @@ Tested and optimized for:
 - Bundle size: ~150KB gzipped
 - 60 FPS animations
 - Low CPU usage (~5% on Pi 4)
-- Temperature update: 500ms interval
-- Chart update: 1s interval
+- Sensor sweep: 1 s (the backend's own loop, independent of any UI)
+- UI updates: pushed as they happen; an idle rig sends nothing but a
+  10 s heartbeat
 
 ## License
 

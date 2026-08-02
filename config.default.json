@@ -31,7 +31,6 @@
   },
   "app": {
     "log_interval_seconds": 5,
-    "brewing_panel_poll_seconds": 1,
     "max_watts": 11000,
     "bk_element_watts": 8500,
     "hlt_element_watts": 5000,
