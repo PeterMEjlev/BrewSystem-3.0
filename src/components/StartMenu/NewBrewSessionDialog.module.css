@@ -1,0 +1,154 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 560px;
+  padding: 28px 32px 24px;
+  background: var(--color-bg-secondary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-hover);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.subtitle {
+  margin-top: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.error {
+  margin-top: 20px;
+  padding: 12px 16px;
+  font-size: var(--font-size-sm);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+}
+
+.label {
+  display: block;
+  margin-top: 22px;
+  margin-bottom: 8px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-dark);
+}
+
+.selectWrap {
+  position: relative;
+}
+
+/* The colour of the beer, in the field itself — a native <option> can't carry
+   one, and it is how every other recipe row here is recognised at a glance. */
+.swatch {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+}
+
+.select,
+.dateInput {
+  width: 100%;
+  padding: 14px 16px;
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color 0.2s;
+  touch-action: manipulation;
+}
+
+.selectWithSwatch {
+  padding-left: 42px;
+}
+
+.select {
+  cursor: pointer;
+}
+
+.select:focus,
+.dateInput:focus {
+  outline: none;
+  border-color: var(--color-gradient-warm-end);
+}
+
+.select:disabled,
+.dateInput:disabled {
+  opacity: 0.5;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.cancelBtn,
+.startBtn {
+  padding: 14px 26px;
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  touch-action: manipulation;
+}
+
+.cancelBtn {
+  color: var(--color-text-secondary);
+  background: none;
+  border: 2px solid var(--color-border);
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.startBtn {
+  color: #fff;
+  background: var(--gradient-warm);
+  border: none;
+}
+
+.startBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.cancelBtn:active:not(:disabled),
+.startBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cancelBtn:disabled,
+.startBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

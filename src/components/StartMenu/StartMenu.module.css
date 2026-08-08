@@ -1,0 +1,139 @@
+.startMenu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  overflow: hidden;
+}
+
+.inner {
+  width: 100%;
+  max-width: 900px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.title {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.5px;
+  background: var(--gradient-warm);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  margin-top: 8px;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-muted);
+}
+
+.activeBrew {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: -20px 0 24px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+}
+
+.activeDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-accent-green);
+  box-shadow: 0 0 8px var(--color-accent-green);
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+/* Big enough to hit without looking, on a rig where the brewer's hands are wet. */
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 28px;
+  font-family: inherit;
+  text-align: center;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  touch-action: manipulation;
+}
+
+.choice:hover:not(:disabled) {
+  border-color: var(--color-border-light);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.choice:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.choice:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.primary:not(:disabled) {
+  border-color: var(--color-gradient-warm-end);
+  background: linear-gradient(
+    145deg,
+    rgba(240, 76, 101, 0.12),
+    rgba(245, 131, 97, 0.06)
+  );
+}
+
+.primary:not(:disabled) .choiceIcon,
+.primary:not(:disabled) .choiceLabel {
+  color: var(--color-gradient-warm-end);
+}
+
+.choiceIcon {
+  width: 52px;
+  height: 52px;
+  color: var(--color-text-muted);
+}
+
+.choiceLabel {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.choiceHint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-dark);
+  max-width: 26ch;
+}
+
+/* On the 1366×768 panel the two cards still fit side by side; a narrower
+   window (a phone watching over the LAN) stacks them. */
+@media (max-width: 720px) {
+  .choices {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .choice {
+    padding: 28px 20px;
+  }
+}

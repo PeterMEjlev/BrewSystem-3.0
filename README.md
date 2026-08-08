@@ -6,6 +6,7 @@ A modern web-based brewery control system designed for Raspberry Pi kiosk mode d
 
 - **Touch-optimized UI** - Large buttons, generous spacing, designed for 14" touchscreen
 - **Dark mode interface** - Sleek, modern design optimized for brewery environments
+- **Start menu** - Open a brew session in the logbook, or go straight to the rig
 - **Real-time monitoring** - Live temperature tracking with visual feedback
 - **Brew timer** - Integrated timing system with Start/Pause/Stop/Reset controls
 - **Hardware abstraction** - Mock system for development, ready for GPIO integration
@@ -30,6 +31,7 @@ A modern web-based brewery control system designed for Raspberry Pi kiosk mode d
 ```
 src/
 ├── components/
+│   ├── StartMenu/         # Where the app opens: with a session, or without
 │   ├── BrewingPanel/      # Main brewing controls
 │   │   ├── PotCard        # BK, MLT, HLT temperature control
 │   │   ├── PumpCard       # Pump control with flow animation
@@ -383,6 +385,53 @@ Both UIs stay consistent automatically — this backend is the single source of
 truth, and it pushes changes to whoever is connected (see
 [Live state](#live-state)).
 
+### SSH access — hop via the BrewPlanner Pi
+
+There is no direct way in from outside: this rig sits on the brewery LAN and,
+per rule 1 above, is never exposed. The BrewPlanner Pi is the only
+internet-reachable machine, so shell access is a two-hop affair.
+
+```
+dev machine ──▶ BrewPlanner Pi (web server) ──▶ this rig
+                brewplanner@192.168.3.3        pi@192.168.3.4
+```
+
+**1. Get onto the BrewPlanner Pi.** On the same LAN:
+
+```bash
+ssh brewplanner@brewplanner.local      # or @192.168.3.3 on the brewery LAN
+```
+
+From anywhere else it answers over its Cloudflare Tunnel at
+`ssh.konfusbrewing.com`, gated by Cloudflare Access — use
+`cloudflared access ssh --hostname ssh.konfusbrewing.com` as the ProxyCommand.
+The Access login opens a browser (JWT cached ~7 days), so the first connection
+can't be done non-interactively. Credentials are not kept in this repo; see the
+BrewPlanner repo's `deploy/README-ssh.md`.
+
+**2. Hop to this rig.** From a shell on the BrewPlanner Pi:
+
+```bash
+ssh pi@192.168.3.4
+ssh pi@192.168.3.4 'systemctl status brew-system.service'   # or one-shot
+```
+
+That hop should be passwordless: `brewplanner`'s ed25519 key is already in this
+rig's `~/.ssh/authorized_keys`, installed for the dashboard's "Update brew
+system" button. If it asks for a password, the key step in BrewPlanner's
+`deploy/README-brew-system-update.md` needs redoing.
+
+Once you're on the rig: the backend runs as `brew-system.service` (FastAPI on
+`:8000`), and its checkout is wherever that unit points —
+
+```bash
+cd "$(systemctl show brew-system.service -p WorkingDirectory --value)"
+```
+
+Addresses come from the brewery LAN map in BrewPlanner's `IP.md`
+(`192.168.3.x`: `.3` web server, `.4` this rig). The rig has no dependable mDNS
+name yet — see [TODO.md](TODO.md) — so use the IP for the second hop.
+
 ### Speaking through Bruce
 
 Traffic also runs the other way. Bruce — the voice assistant wired to the brewery
@@ -458,6 +507,47 @@ The watcher is deliberately quiet everywhere an answer would mean nothing: a pot
 not under regulation, one within `min_headroom_c` of its set value, a duty cycle
 under `min_efficiency`, and a failed sensor — which is the regulation loop's
 business, and already forces the heater off.
+
+## Start Menu
+
+The app opens on a menu rather than on the brewing screen, because there are two
+different things a brewer walks up to this rig to do.
+
+**Start a new brew session** asks for a recipe and a date, then opens a row in
+BrewPlanner's logbook and goes to the brewing screen. That row is what makes the
+batch a *batch*: BrewPlanner snapshots the recipe as it reads today, puts the
+beer in the fermenter, and starts sampling this rig's pot temperatures every 30 s
+for as long as the session says `brewing` — so the day comes out with a mash and
+boil curve filed against it. The Recipe tab opens straight into that recipe too.
+
+**Go to the brewing system** is the rest of the year. Cleaning, a water test, a
+boil to season a new element and chasing a sensor fault are all brewing, and none
+of them belongs in the logbook.
+
+Worth knowing:
+
+- **A restart mid-brew doesn't ask again.** On launch the app checks whether
+  BrewPlanner already has a session in progress, and if it does, goes straight to
+  the brewing screen. A kiosk that reloads during the mash comes back to the
+  screen you were looking at, not to a menu offering to start a second session.
+- **The recipes are BrewPlanner's, not Brewer's Friend's.** The session is filed
+  against a recipe in BrewPlanner's library, and a Brewer's Friend recipe that
+  has never been imported there has an id it would refuse. Offering only what can
+  actually be started beats a picker where some rows fail. Import from Brewer's
+  Friend on BrewPlanner's own Recipes page.
+- **No web server, no sessions — but still a rig.** With `BREW_PLANNER_URL`
+  unset or the other Pi rebooting, the first choice greys out and says why. The
+  second always works. A rig on the bench must never be stopped from brewing by a
+  web server being down.
+- **Starting a session rolls this rig's temperature log**, the same way
+  `/api/hardware/initialize` does — a new CSV, and a `session_reset` to the
+  connected charts. Otherwise a brew day's curve would open with however many
+  hours of idle bench readings the rig had taken since it was last switched on.
+- **The date is for back-dating only.** It defaults to today and won't go past
+  it. Left at today, no timestamp is sent at all and BrewPlanner stamps the real
+  clock time the brew started.
+
+The menu is reachable again at any time from **Home** in the bottom nav.
 
 ## Screen Sleep
 

@@ -1417,14 +1417,65 @@ async def bruce_status() -> Dict[str, Any]:
 
 @app.get("/api/brew-planner/active-brew")
 async def get_active_brew() -> Dict[str, Any]:
-    """Whether BrewPlanner has a brew day in progress, and on which recipe.
+    """Whether BrewPlanner has a brew session in progress, and on which recipe.
 
-    Lets the Recipe tab open straight into what is being brewed instead of
-    making the brewer find it in the list. Answers 200 with `active: false`
-    when the web server is unreachable — no brew day showing is the right
-    outcome there, not an error on a touchscreen.
+    Two callers: the Recipe tab opens straight into what is being brewed instead
+    of making the brewer find it in the list, and the start menu steps aside on
+    launch when a brew is already under way — a kiosk that reloads during the
+    mash should come back to the brewing screen, not to a menu offering to start
+    a second session.
+
+    Answers 200 with `active: false` when the web server is unreachable — no
+    brew session showing is the right outcome there, not an error on a
+    touchscreen.
     """
     return await brew_planner.active_brew()
+
+
+@app.get("/api/brew-planner/recipes")
+async def get_brew_planner_recipes() -> Dict[str, Any]:
+    """BrewPlanner's recipe library, for the start menu's session picker.
+
+    Answers 200 with `available: false` and a reason when there is no BrewPlanner
+    to ask, which is what greys the "Start new brew session" choice out. A rig on
+    the bench with no web server is a normal way to run this backend, and it must
+    still be able to brew.
+    """
+    return await brew_planner.recipes()
+
+
+# camelCase because these two go straight out to BrewPlanner, whose schema names
+# them so; renaming them here would only mean translating twice.
+class StartBrewSessionRequest(BaseModel):
+    recipeId: str = Field(min_length=1, max_length=200)
+    # An ISO instant, sent only when back-dating a brew that already happened.
+    # Left out for a brew starting now, so BrewPlanner stamps the real clock time.
+    brewedAt: Optional[str] = Field(default=None)
+
+
+@app.post("/api/brew-planner/brew-sessions")
+async def start_brew_session(body: StartBrewSessionRequest) -> Dict[str, Any]:
+    """Start a brew session from the rig, then roll this rig's temperature log.
+
+    BrewPlanner owns the logbook, so the row is made there first: if that fails
+    there is no session, and clearing the rig's chart would have thrown away a
+    reading for nothing.
+
+    The fresh log is the same pair `/api/hardware/initialize` uses — a new CSV,
+    and a `session_reset` to the connected charts, which have no other way to
+    learn that every row they are holding belongs to a finished brew. Without it
+    a brew day's curve would open with however many hours of idle bench readings
+    the rig happened to have taken since it was last switched on.
+    """
+    try:
+        session = await brew_planner.start_brew_session(body.recipeId, body.brewedAt)
+    except brew_planner.BrewPlannerError as e:
+        # 502: this rig is fine, the machine it had to ask is not.
+        raise HTTPException(status_code=502, detail=str(e))
+
+    session_logger.start_new_session()
+    await _broadcast({"type": "session_reset"})
+    return {"status": "ok", "brewSession": session}
 
 
 # ─── Brewer's Friend recipe endpoint ──────────────────────────────────────────
