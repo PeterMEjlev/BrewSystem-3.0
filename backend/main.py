@@ -399,9 +399,6 @@ class AppSettings(BaseModel):
     # frontend and Bruce read these via /api/settings.
     bk_element_watts: int = 8500
     hlt_element_watts: int = 5000
-    # Legacy — the uPlot canvas chart renders all points; kept so existing
-    # config.json files keep validating.
-    max_chart_points: int = 150
     auto_efficiency: AutoEfficiencySettings = Field(default_factory=AutoEfficiencySettings)
     heat_fault: HeatFaultSettings = Field(default_factory=HeatFaultSettings)
     screen_sleep: ScreenSleepSettings = Field(default_factory=ScreenSleepSettings)
@@ -1432,20 +1429,19 @@ async def get_active_brew() -> Dict[str, Any]:
     return await brew_planner.active_brew()
 
 
-@app.get("/api/brew-planner/recipes")
-async def get_brew_planner_recipes() -> Dict[str, Any]:
-    """BrewPlanner's recipe library, for the start menu's session picker.
-
-    Answers 200 with `available: false` and a reason when there is no BrewPlanner
-    to ask, which is what greys the "Start new brew session" choice out. A rig on
-    the bench with no web server is a normal way to run this backend, and it must
-    still be able to brew.
-    """
-    return await brew_planner.recipes()
-
-
 # camelCase because these two go straight out to BrewPlanner, whose schema names
 # them so; renaming them here would only mean translating twice.
+@app.get("/api/brew-planner/keg-colors")
+async def get_keg_colors() -> Dict[str, Any]:
+    """The keg-content palette BrewPlanner owns, for this rig's Keg Info page.
+
+    Answers 200 with `colors: null` when there is no BrewPlanner to ask; the Keg
+    Info page then draws its built-in palette, which is the same one BrewPlanner
+    ships with.
+    """
+    return {"colors": await brew_planner.keg_content_colors()}
+
+
 class StartBrewSessionRequest(BaseModel):
     recipeId: str = Field(min_length=1, max_length=200)
     # An ISO instant, sent only when back-dating a brew that already happened.
@@ -1478,412 +1474,53 @@ async def start_brew_session(body: StartBrewSessionRequest) -> Dict[str, Any]:
     return {"status": "ok", "brewSession": session}
 
 
-# ─── Brewer's Friend recipe endpoint ──────────────────────────────────────────
-
-BREWERSFRIEND_API_BASE = "https://api.brewersfriend.com/v1"
-
-
-def _get_api_key() -> str:
-    api_key = os.getenv("BREWERSFRIEND_API_KEY", "").strip()
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Brewer's Friend API key is not configured. Add a line "
-                "'BREWERSFRIEND_API_KEY=your-key-here' to the .env file in the project "
-                "root, then restart the backend. You can find your key under "
-                "Brewer's Friend → Account → API Key."
-            ),
-        )
-    return api_key
-
-
-def _raise_for_brewersfriend_status(resp: "httpx.Response") -> None:
-    """Translate a non-200 Brewer's Friend response into a clear, actionable error."""
-    if resp.status_code == 200:
-        return
-    if resp.status_code == 401:
-        raise HTTPException(
-            status_code=401,
-            detail=(
-                "Brewer's Friend rejected the API key (401 Unauthorized). Check that "
-                "BREWERSFRIEND_API_KEY in your .env file is correct and has not expired, "
-                "then restart the backend."
-            ),
-        )
-    if resp.status_code == 403:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Brewer's Friend denied access (403 Forbidden). Your account may not have "
-                "API access enabled — verify your subscription on brewersfriend.com."
-            ),
-        )
-    if resp.status_code == 429:
-        raise HTTPException(
-            status_code=429,
-            detail="Brewer's Friend rate limit reached (429). Please wait a minute and try again.",
-        )
-    raise HTTPException(
-        status_code=502,
-        detail=(
-            f"Brewer's Friend returned an unexpected error (HTTP {resp.status_code}). "
-            f"This is usually temporary — try again shortly. Details: {resp.text[:200]}"
-        ),
-    )
-
-
-async def _brewersfriend_get(client: "httpx.AsyncClient", *, params: Dict[str, Any], api_key: str) -> Dict[str, Any]:
-    """GET /recipes from Brewer's Friend, returning parsed JSON.
-
-    Converts connection failures, timeouts, bad statuses, and malformed responses
-    into HTTPExceptions whose `detail` tells the user exactly what to fix.
-    """
-    try:
-        resp = await client.get(
-            f"{BREWERSFRIEND_API_BASE}/recipes",
-            headers={"X-API-Key": api_key},
-            params=params,
-        )
-    except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail=(
-                "Brewer's Friend did not respond within 15 seconds. Check this system's "
-                "internet connection and try again."
-            ),
-        )
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Could not reach Brewer's Friend (api.brewersfriend.com). Check that this "
-                f"system has internet access, then try again. ({type(e).__name__})"
-            ),
-        )
-
-    _raise_for_brewersfriend_status(resp)
-
-    try:
-        return resp.json()
-    except ValueError:
-        raise HTTPException(
-            status_code=502,
-            detail="Brewer's Friend returned a response that could not be read. Try again shortly.",
-        )
-
-
-# Recipe-list cache — browsing back to the recipe tab within the TTL serves
-# the list instantly and spares Brewer's Friend's 429 rate limit. The UI's
-# refresh button bypasses it with ?refresh=1.
-_RECIPES_CACHE_TTL_SECONDS = 300
-_recipes_cache: Dict[str, Any] = {"data": None, "fetched_at": 0.0}
-
-
-def _slim_recipe(r: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "id": r.get("id"),
-        "name": r.get("title", ""),
-        "style": r.get("stylename", ""),
-        "abv": r.get("abv", ""),
-        "ibu": r.get("ibutinseth", ""),
-        "ebc": r.get("srmecbmorey", ""),
-        "createdAt": r.get("created_at", ""),
-    }
+# ─── Recipes ──────────────────────────────────────────────────────────────────
+#
+# BrewPlanner's library, proxied. The rig used to read Brewer's Friend directly
+# and slim the response down itself, which left the two machines showing
+# different libraries: a recipe written in BrewPlanner was invisible here, while
+# still being the one a brew session had to be filed against. It also put the
+# figures BrewPlanner works out — what a batch costs, a colour for a grain bill
+# that reports none, which hop times are in days — permanently out of reach,
+# since they come from a price catalogue and an import history this rig doesn't
+# have.
+#
+# The browser can't call BrewPlanner itself (its CORS allowlist is localhost),
+# so every one of these hops through here.
 
 
 @app.get("/api/recipes")
-async def get_recipes(refresh: bool = False) -> Dict[str, Any]:
-    """Fetch all recipes from Brewer's Friend (without ingredients for speed).
+async def get_recipes() -> Dict[str, Any]:
+    """The recipe library, for the Recipe tab and the two recipe pickers.
 
-    Results are cached for a few minutes; pages after the first are fetched
-    concurrently when the API reports a total count.
+    `available: false` with a reason when there is no BrewPlanner to ask, rather
+    than an error status: a rig on the bench with no web server still has to
+    brew, and a page that says why beats a page that just fails.
     """
-    if (
-        not refresh
-        and _recipes_cache["data"] is not None
-        and time.monotonic() - _recipes_cache["fetched_at"] < _RECIPES_CACHE_TTL_SECONDS
-    ):
-        return _recipes_cache["data"]
+    return await brew_planner.recipes()
 
-    api_key = _get_api_key()
-    limit = 100  # max allowed by the API
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        first = await _brewersfriend_get(
-            client,
-            params={"sort": "created_at:-1", "limit": limit, "offset": 0},
-            api_key=api_key,
-        )
-        batch = first.get("recipes", [])
-        all_recipes = [_slim_recipe(r) for r in batch]
+@app.get("/api/recipes/brew-counts")
+async def get_recipe_brew_counts() -> Dict[str, Any]:
+    """How often each recipe has been brewed, for the badges on the list.
 
-        if len(batch) == limit:
-            try:
-                total = int(first.get("count"))
-            except (TypeError, ValueError):
-                total = None
-
-            if total is not None and total > limit:
-                # Total known — fetch every remaining page concurrently.
-                offsets = range(limit, total, limit)
-                pages = await asyncio.gather(*[
-                    _brewersfriend_get(
-                        client,
-                        params={"sort": "created_at:-1", "limit": limit, "offset": offset},
-                        api_key=api_key,
-                    )
-                    for offset in offsets
-                ])
-                for page in pages:
-                    all_recipes.extend(_slim_recipe(r) for r in page.get("recipes", []))
-            else:
-                # Total unknown — fall back to walking pages serially.
-                offset = limit
-                while True:
-                    data = await _brewersfriend_get(
-                        client,
-                        params={"sort": "created_at:-1", "limit": limit, "offset": offset},
-                        api_key=api_key,
-                    )
-                    page_batch = data.get("recipes", [])
-                    if not page_batch:
-                        break
-                    all_recipes.extend(_slim_recipe(r) for r in page_batch)
-                    if len(page_batch) < limit:
-                        break
-                    offset += limit
-
-    result = {"recipes": all_recipes}
-    _recipes_cache["data"] = result
-    _recipes_cache["fetched_at"] = time.monotonic()
-    return result
+    Declared before `/api/recipes/{recipe_id}` — FastAPI matches in declaration
+    order, and this would otherwise be read as a recipe called "brew-counts".
+    """
+    return {"counts": await brew_planner.brew_counts()}
 
 
 @app.get("/api/recipes/{recipe_id}")
-async def get_recipe(recipe_id: int) -> Dict[str, Any]:
-    """Fetch a single recipe with full ingredients from Brewer's Friend."""
-    api_key = _get_api_key()
-
-    async with httpx.AsyncClient(timeout=15) as client:
-        data = await _brewersfriend_get(
-            client,
-            params={"id": recipe_id, "ingredients": "true"},
-            api_key=api_key,
-        )
-        recipes = data.get("recipes", [])
-        if not recipes:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Recipe #{recipe_id} was not found in your Brewer's Friend account.",
-            )
-
-        recipe = recipes[0]
-
-        return {
-            "id": recipe.get("id"),
-            "name": recipe.get("title", ""),
-            "style": recipe.get("stylename", ""),
-            "og": recipe.get("og", ""),
-            "preBoilGravity": recipe.get("boilgravity") or None,
-            "postBoilGravity": recipe.get("post_boilgravity") or None,
-            "fg": recipe.get("fg", ""),
-            "abv": recipe.get("abv", ""),
-            "ibu": recipe.get("ibutinseth", ""),
-            "ebc": recipe.get("srmecbmorey", ""),
-            "batchSize": _extract_batch_size_liters(recipe),
-            "mashTemp": _extract_mash_temp(recipe),
-            "fermentationTemp": _extract_fermentation_temp(recipe),
-            "fermentables": _extract_fermentables(recipe),
-            "hops": _extract_hops(recipe),
-            "yeast": _extract_yeast(recipe),
-            "mashGuidelines": _extract_mash_guidelines(recipe),
-            "otherIngredients": _extract_other_ingredients(recipe),
-            "waterProfile": _extract_water_profile(recipe),
-        }
+async def get_recipe(recipe_id: str) -> Dict[str, Any]:
+    """One recipe's full brew sheet, as BrewPlanner states it."""
+    return await brew_planner.recipe(recipe_id)
 
 
-def _extract_mash_temp(recipe: Dict) -> Optional[str]:
-    """Pull the main mash temperature from the recipe."""
-    # Check mash steps first
-    mash_steps = recipe.get("mashsteps", [])
-    if mash_steps:
-        # Find the longest step (typically the saccharification rest)
-        main_step = max(mash_steps, key=lambda s: float(s.get("steptime", 0) or 0))
-        temp = main_step.get("steptemp")
-        unit = main_step.get("steptempunit", "C")
-        if temp:
-            return f"{temp}\u00b0{unit}"
-    # Fallback: check recipe-level mash temp
-    mash_temp = recipe.get("mashtemp")
-    if mash_temp:
-        return f"{mash_temp}\u00b0C"
-    return None
+@app.get("/api/recipes/{recipe_id}/brew-sessions")
+async def get_recipe_brew_sessions(recipe_id: str) -> Dict[str, Any]:
+    """Every batch brewed from this recipe — the brew history on its sheet."""
+    return {"brewSessions": await brew_planner.recipe_brew_sessions(recipe_id)}
 
-
-def _extract_batch_size_liters(recipe: Dict) -> Optional[float]:
-    """Return batch size in liters, converting from gallons if needed."""
-    size = recipe.get("batchsize")
-    if size is None:
-        return None
-    try:
-        size = float(size)
-    except (ValueError, TypeError):
-        return None
-    unit = (recipe.get("batchsizeunit") or "l").lower()
-    if unit in ("gal", "gallon", "gallons"):
-        size = round(size * 3.78541, 2)
-    return size
-
-
-def _extract_fermentation_temp(recipe: Dict) -> Optional[str]:
-    """Pull the primary fermentation temperature from the recipe."""
-    steps = recipe.get("fermentationsteps", [])
-    if steps:
-        step = steps[0]
-        temp = step.get("steptemp")
-        unit = step.get("steptempunit", "C")
-        if temp:
-            return f"{temp}\u00b0{unit}"
-    temp = recipe.get("primarytemp") or recipe.get("fermentationtemp")
-    if temp:
-        return f"{temp}\u00b0C"
-    return None
-
-
-def _extract_fermentables(recipe: Dict) -> list:
-    """Extract fermentable ingredients from the recipe."""
-    fermentables = recipe.get("fermentables", [])
-    result = []
-    for f in fermentables:
-        lovibond = f.get("lovibond")
-        try:
-            ebc = round(((float(lovibond) * 1.3546) - 0.76) * 1.97, 1) if lovibond is not None else None
-        except (ValueError, TypeError):
-            ebc = None
-        result.append({
-            "name": f.get("name", ""),
-            "amount": f.get("amount", ""),
-            "unit": f.get("unit", ""),
-            "percent": f.get("percent", ""),
-            "ebc": ebc,
-        })
-    return result
-
-
-def _extract_hops(recipe: Dict) -> list:
-    """Extract hop ingredients from the recipe."""
-    hops = recipe.get("hops", [])
-    return [
-        {
-            "name": h.get("name", ""),
-            "amount": h.get("amount", ""),
-            "unit": h.get("unit", ""),
-            "use": h.get("hopuse", ""),
-            "time": h.get("hoptime", ""),
-            "aa": h.get("aa", ""),
-            "ibu": h.get("ibu", ""),
-            "temp": h.get("hopstand_temp", ""),
-        }
-        for h in hops
-    ]
-
-
-def _extract_water_profile(recipe: Dict) -> Optional[Dict[str, Any]]:
-    """Extract target water profile from the recipe."""
-    minerals = {
-        "calcium": recipe.get("ca2"),
-        "magnesium": recipe.get("mg2"),
-        "sodium": recipe.get("na"),
-        "chloride": recipe.get("cl"),
-        "sulfate": recipe.get("so4"),
-        "bicarbonate": recipe.get("hco3"),
-    }
-    name = recipe.get("waterprofile") or None
-    ph = recipe.get("ph") or None
-    notes = recipe.get("waternotes") or None
-
-    # Filter out None/empty mineral values
-    filled = {k: v for k, v in minerals.items() if v is not None and v != ""}
-
-    # Only return a profile if there's at least a name or some mineral data
-    if not name and not filled and not ph:
-        return None
-
-    return {
-        "name": name,
-        "ph": ph,
-        "notes": notes,
-        **minerals,
-    }
-
-
-def _extract_yeast(recipe: Dict) -> list:
-    """Extract yeast from the recipe."""
-    yeasts = recipe.get("yeasts", [])
-    return [
-        {
-            "name": y.get("name", ""),
-            "lab": y.get("laboratory", "") or y.get("lab", ""),
-            "attenuation": y.get("attenuation", ""),
-            "amount": y.get("amount", ""),
-            "amountUnit": y.get("unit", ""),
-        }
-        for y in yeasts
-    ]
-
-
-def _extract_mash_guidelines(recipe: Dict) -> Optional[Dict[str, Any]]:
-    """Extract full mash guidelines: all steps and notes."""
-    mash_steps = recipe.get("mashsteps", [])
-    steps = []
-    for s in mash_steps:
-        temp = s.get("temp") or s.get("steptemp")
-        time_min = s.get("mashtime") or s.get("steptime")
-        name = s.get("mashtype") or s.get("name") or ""
-        amount = s.get("amount")
-        unit = s.get("unit", "")
-        step_data = {
-            "name": name,
-            "temp": f"{temp}°C" if temp else None,
-            "time": time_min,
-        }
-        if amount:
-            step_data["amount"] = f"{amount} {unit}".strip()
-        steps.append(step_data)
-
-    notes = recipe.get("mashnotes") or recipe.get("notes_mash") or None
-
-    if not steps and not notes:
-        return None
-
-    return {
-        "steps": steps,
-        "notes": notes,
-    }
-
-
-def _extract_other_ingredients(recipe: Dict) -> list:
-    """Extract miscellaneous / other ingredients from the recipe."""
-    others = recipe.get("others", []) or recipe.get("miscs", [])
-    result = []
-    for m in others:
-        name = m.get("name", "")
-        amount = m.get("amount", "")
-        unit = m.get("unit", "")
-        use = m.get("otheruse") or m.get("miscuse") or m.get("use", "")
-        time_val = m.get("othertime") or m.get("misctime") or m.get("time", "")
-        other_type = m.get("othertype") or m.get("type", "")
-        if name:
-            result.append({
-                "name": name,
-                "amount": amount,
-                "unit": unit,
-                "use": use,
-                "time": time_val,
-                "type": other_type,
-            })
-    return result
 
 
 # Serve React build

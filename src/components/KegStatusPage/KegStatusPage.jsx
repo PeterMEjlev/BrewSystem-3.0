@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { playClick, playNavigate } from '../../utils/sounds';
+import {
+  CONTENT_OPTIONS,
+  DEFAULT_CONTENT_COLORS,
+  fetchContentColors,
+  getContentColor,
+  matchContentOption,
+} from '../../utils/kegContent';
 import styles from '../ToolsPage/ToolsPage.module.css';
 
 const SHEETS_CSV_URL =
@@ -7,35 +14,6 @@ const SHEETS_CSV_URL =
 
 // Replace with your deployed Apps Script web app URL
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxKTibop5YCnFjuewJLn-cf0MJ-o2SFVVqMzHm3BK-bp7fWmT9bECyZF5NF5uw4A-ywtA/exec';
-
-// Colours chosen to evoke the actual appearance of each beer / keg state
-const CONTENT_COLORS = {
-  'IPA':       '#C8782A', // amber copper
-  'NEIPA':     '#3ee849', // hazy orange-gold
-  'Wiessbeer': '#E8C84A', // cloudy banana-gold
-  'Sour':      '#D64878', // tart raspberry pink
-  'Brown Ale': '#7A3B1A', // rich mahogany
-  'Starsan':   '#b8faff', // pink (like the sanitiser itself)
-  'SIPA':      '#2a9826', // lighter golden session IPA
-  'Pilsner':   '#DEC05C', // pale straw gold
-  'Stout':     '#3A2A1A', // near-black dark roast (card uses overrides)
-  'Dirty':     '#ff0000', // warning red-brown
-  'Clean':     '#ffffff', // fresh aqua
-  '???':       '#707070', // neutral grey
-};
-
-const CONTENT_OPTIONS = [
-  'IPA', 'NEIPA', 'Wiessbeer', 'Sour', 'Brown Ale',
-  'Starsan', 'SIPA', 'Pilsner', 'Stout',
-  'Dirty', 'Clean', '???',
-];
-
-function getContentColor(contents) {
-  const key = Object.keys(CONTENT_COLORS).find(
-    (k) => k.toLowerCase() === contents.trim().toLowerCase(),
-  );
-  return key ? CONTENT_COLORS[key] : null;
-}
 
 function hexToRgb(hex) {
   const n = parseInt(hex.replace('#', ''), 16);
@@ -115,25 +93,6 @@ function sortKegs(kegs, sortKey, sortAsc) {
   });
 }
 
-// Try to match a recipe name/style to a predefined content option.
-// e.g. "My Tropical Sour" → "Sour", "Galaxy NEIPA" → "NEIPA"
-function matchContentOption(recipeName, recipeStyle) {
-  const sources = [recipeName, recipeStyle].filter(Boolean);
-  for (const text of sources) {
-    const t = text.toLowerCase();
-    // Order matters: check more specific terms before generic ones
-    if (t.includes('neipa') || t.includes('hazy'))        return 'NEIPA';
-    if (t.includes('sipa') || t.includes('session ipa'))   return 'SIPA';
-    if (t.includes('brown ale'))                           return 'Brown Ale';
-    if (t.includes('ipa'))                                 return 'IPA';
-    if (t.includes('wiessbeer') || t.includes('weiss') || t.includes('hefeweizen') || t.includes('wheat')) return 'Wiessbeer';
-    if (t.includes('sour') || t.includes('gose') || t.includes('berliner')) return 'Sour';
-    if (t.includes('pilsner') || t.includes('pils') || t.includes('lager')) return 'Pilsner';
-    if (t.includes('stout') || t.includes('porter'))       return 'Stout';
-  }
-  return null;
-}
-
 const LONG_PRESS_MS = 500;
 
 function todayDDMMYYYY() {
@@ -143,7 +102,7 @@ function todayDDMMYYYY() {
   return `${dd}/${mm}/${d.getFullYear()}`;
 }
 
-function KegEditModal({ kegs, onClose, onSave }) {
+function KegEditModal({ kegs, colors, onClose, onSave }) {
   const isBulk = kegs.length > 1;
   const first = kegs[0];
 
@@ -260,7 +219,7 @@ function KegEditModal({ kegs, onClose, onSave }) {
     onSave(updates);
   };
 
-  const color = getContentColor(form.contents);
+  const color = getContentColor(form.contents, colors);
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
@@ -431,6 +390,9 @@ function KegStatusPage() {
   const [error, setError] = useState('');
   const [sortKey, setSortKey] = useState('number');
   const [sortAsc, setSortAsc] = useState(true);
+  // BrewPlanner owns the palette; these are what it ships with, so the board
+  // draws immediately and only recolours if the brewer has customised it there.
+  const [colors, setColors] = useState(DEFAULT_CONTENT_COLORS);
 
   // Remember last known keg count so skeletons match the layout
   const skeletonCount = parseInt(localStorage.getItem(KEG_COUNT_KEY) || DEFAULT_SKELETON_COUNT, 10) || DEFAULT_SKELETON_COUNT;
@@ -447,6 +409,12 @@ function KegStatusPage() {
   const pressTimer = useRef(null);
   const pressedKeg = useRef(null);
   const didLongPress = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchContentColors().then((c) => { if (!cancelled) setColors(c); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     fetch(SHEETS_CSV_URL)
@@ -612,7 +580,7 @@ function KegStatusPage() {
               </div>
             ))
           : sorted.map((keg) => {
-          const color = getContentColor(keg.contents);
+          const color = getContentColor(keg.contents, colors);
           const unknown = isUnknown(keg.contents);
           const rgb = color ? hexToRgb(color) : null;
           const isStout = keg.contents.trim().toLowerCase() === 'stout';
@@ -692,6 +660,7 @@ function KegStatusPage() {
       {editingKeg && (
         <KegEditModal
           kegs={[editingKeg]}
+          colors={colors}
           onClose={() => setEditingKeg(null)}
           onSave={handleSaveResult}
         />
@@ -701,6 +670,7 @@ function KegStatusPage() {
       {editingBulk && selectedKegs.length > 0 && (
         <KegEditModal
           kegs={selectedKegs}
+          colors={colors}
           onClose={() => setEditingBulk(false)}
           onSave={handleSaveResult}
         />

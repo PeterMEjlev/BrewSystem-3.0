@@ -12,6 +12,9 @@ import styles from './StartMenu.module.css';
  * day with a curve against it, and one started with "Go to brewing system" does
  * not. Both are legitimate: cleaning, a water test and a boil to season an
  * element are all brewing, and none of them belongs in the logbook.
+ *
+ * The picker reads `/api/recipes`, the same library the Recipe tab shows, so
+ * what can be started here and what can be read there are one list.
  */
 function StartMenu({ onStartSession, onSkipSession }) {
   const [recipes, setRecipes] = useState([]);
@@ -30,7 +33,7 @@ function StartMenu({ onStartSession, onSkipSession }) {
         // Both are LAN round trips to the other Pi — asked together rather than
         // one after the other, so the menu settles in one server's worth of wait.
         const [recipeRes, activeRes] = await Promise.all([
-          fetch('/api/brew-planner/recipes'),
+          fetch('/api/recipes'),
           fetch('/api/brew-planner/active-brew'),
         ]);
         const data = await recipeRes.json();

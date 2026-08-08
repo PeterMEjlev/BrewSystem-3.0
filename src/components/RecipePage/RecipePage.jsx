@@ -1,25 +1,26 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { playClick, playNavigate } from '../../utils/sounds';
 import { ebcToColor } from '../../utils/beerColor';
+import { predictBeerColor } from '../../utils/beerColorPrediction';
+import { estimateFermentationDays } from '../../utils/fermentationEstimate';
+import { DEFAULT_CONTENT_COLORS, fetchContentColors, matchContentOption } from '../../utils/kegContent';
+import { HOP_STAGE_ORDER, formatContactTime, kr, sumCost } from '../../utils/recipeDisplay';
 import styles from './RecipePage.module.css';
 
-// Pull the most descriptive message possible out of a failed response.
-// Order: FastAPI's JSON { detail }, then a short plain-text body (e.g. the
-// bare "Internal Server Error" FastAPI sends for unhandled exceptions), then
-// a generic status fallback. HTML bodies (the SPA index.html) are ignored.
-async function readErrorMessage(response, fallback) {
-  let body = '';
-  try { body = await response.text(); } catch { /* body unavailable */ }
-  if (body) {
-    try {
-      const data = JSON.parse(body);
-      if (data && data.detail) return data.detail;
-    } catch { /* not JSON */ }
-    const trimmed = body.trim();
-    if (trimmed && trimmed.length < 300 && !trimmed.startsWith('<')) return trimmed;
-  }
-  return fallback;
-}
+/**
+ * The brewery's recipes, read from BrewPlanner.
+ *
+ * BrewPlanner owns the library and has already done the work this rig can't:
+ * costing each line against its price catalogue, calculating a colour for a
+ * grain bill that reports none, sorting hops into brew-session stages, and
+ * recording which contact times are in days rather than minutes. The sheet
+ * arrives with all of that on it, so this page renders rather than derives.
+ *
+ * What is worked out here is only what needs the whole sheet at once and needs
+ * nothing else: the pour colour once fruit is accounted for, and roughly how
+ * long the pitch will take. Both are ported from BrewPlanner so a recipe reads
+ * the same in either place.
+ */
 
 // fetch() itself throws (vs. returning a non-ok response) only when the request
 // never completes — almost always because the backend isn't reachable.
@@ -31,10 +32,37 @@ function describeNetworkError(err, fallback) {
 }
 
 // Module-level cache — RecipePage unmounts when leaving the tab, and without
-// this every visit re-walks all pages of the Brewer's Friend API. The list
-// only refetches on the explicit refresh button (which also bypasses the
-// backend's TTL cache).
+// this every visit re-reads the whole library across the LAN. The list only
+// refetches on the explicit refresh button.
 let recipesCache = null;
+
+const ALL_COLLAPSED = {
+  fermentables: true,
+  hops: true,
+  otherIngredients: true,
+  yeast: true,
+  mashGuidelines: true,
+  water: true,
+  brewHistory: true,
+};
+
+const fmt = (val, decimals) => {
+  const n = parseFloat(val);
+  return isNaN(n) ? val : n.toFixed(decimals);
+};
+
+const fmtAbv = (val) => {
+  const n = parseFloat(val);
+  return isNaN(n) ? val : n.toFixed(1);
+};
+
+/** The calendar day a brew happened: "14 Jul 2026". */
+const brewDate = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 function RecipePage() {
   const panelRef = useRef(null);
@@ -48,19 +76,24 @@ function RecipePage() {
     } catch { return null; }
   });
   const restoredRecipeId = useRef(selectedRecipe?.id);
+  const [brewHistory, setBrewHistory] = useState([]);
+  const [brewCounts, setBrewCounts] = useState({});
+  // The keg palette, which is also what colours a recipe by its style — the
+  // same beer wears one colour on the keg board and in this list.
+  const [contentColors, setContentColors] = useState(DEFAULT_CONTENT_COLORS);
   const [loading, setLoading] = useState(recipesCache == null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       const saved = sessionStorage.getItem('recipeSectionsCollapsed');
-      return saved ? JSON.parse(saved) : { fermentables: true, hops: true, otherIngredients: true, yeast: true, mashGuidelines: true, water: true };
-    } catch { return { fermentables: true, hops: true, otherIngredients: true, yeast: true, mashGuidelines: true, water: true }; }
+      return saved ? { ...ALL_COLLAPSED, ...JSON.parse(saved) } : ALL_COLLAPSED;
+    } catch { return ALL_COLLAPSED; }
   });
 
   const toggleSection = (key) => setCollapsed(prev => {
     const next = { ...prev, [key]: !prev[key] };
-    try { sessionStorage.setItem('recipeSectionsCollapsed', JSON.stringify(next)); } catch {}
+    try { sessionStorage.setItem('recipeSectionsCollapsed', JSON.stringify(next)); } catch { /* the sections still toggle, they just won't be remembered */ }
     return next;
   });
 
@@ -93,15 +126,20 @@ function RecipePage() {
     }
   }, []);
 
-  const fetchRecipes = async (force = false) => {
+  const fetchRecipes = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(force ? '/api/recipes?refresh=1' : '/api/recipes');
-      if (!response.ok) {
-        throw new Error(await readErrorMessage(response, `Failed to fetch recipes (HTTP ${response.status}).`));
-      }
+      const response = await fetch('/api/recipes');
       const data = await response.json();
+      if (!data.available) {
+        // The library lives on the other Pi, so "no recipes" and "no web
+        // server" are different answers and the page says which.
+        recipesCache = [];
+        setRecipes([]);
+        setError(data.error || 'BrewPlanner is unreachable.');
+        return;
+      }
       recipesCache = data.recipes || [];
       setRecipes(recipesCache);
     } catch (err) {
@@ -116,13 +154,20 @@ function RecipePage() {
     setDetailLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/recipes/${id}`);
-      if (!response.ok) {
-        throw new Error(await readErrorMessage(response, `Failed to fetch recipe (HTTP ${response.status}).`));
-      }
+      const response = await fetch(`/api/recipes/${encodeURIComponent(id)}`);
       const data = await response.json();
-      setSelectedRecipe(data);
-      try { sessionStorage.setItem('selectedRecipe', JSON.stringify(data)); } catch {}
+      if (!data.available || !data.recipe) {
+        throw new Error(data.error || 'Failed to fetch recipe.');
+      }
+      setSelectedRecipe(data.recipe);
+      try { sessionStorage.setItem('selectedRecipe', JSON.stringify(data.recipe)); } catch { /* the sheet still opens, it just won't survive a reload */ }
+      // The history is a separate read, and a missing one is not a reason to
+      // fail opening the sheet — it just shows no brews.
+      try {
+        const historyRes = await fetch(`/api/recipes/${encodeURIComponent(id)}/brew-sessions`);
+        const history = await historyRes.json();
+        setBrewHistory(history.brewSessions || []);
+      } catch { setBrewHistory([]); }
     } catch (err) {
       console.error('Error fetching recipe:', err);
       setError(describeNetworkError(err, 'Failed to fetch recipe.'));
@@ -134,6 +179,7 @@ function RecipePage() {
   const goBack = () => {
     playNavigate();
     setSelectedRecipe(null);
+    setBrewHistory([]);
     sessionStorage.removeItem('selectedRecipe');
     setError(null);
   };
@@ -144,8 +190,21 @@ function RecipePage() {
     if (recipesCache == null) fetchRecipes();
   }, []);
 
-  // A brew day in progress on BrewPlanner means the brewer is standing at the
-  // rig working through that recipe, so open straight into it. This runs on
+  useEffect(() => {
+    let cancelled = false;
+    fetchContentColors().then((c) => { if (!cancelled) setContentColors(c); });
+    (async () => {
+      try {
+        const response = await fetch('/api/recipes/brew-counts');
+        const data = await response.json();
+        if (!cancelled) setBrewCounts(data.counts || {});
+      } catch { /* no badges, no harm */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // A brew session in progress on BrewPlanner means the brewer is standing at
+  // the rig working through that recipe, so open straight into it. This runs on
   // every mount — i.e. every time the tab is opened — so backing out to the
   // list lasts for that visit only, and reopening returns to the active brew.
   useEffect(() => {
@@ -168,19 +227,10 @@ function RecipePage() {
     if (panelRef.current) panelRef.current.scrollTop = 0;
   }, [selectedRecipe]);
 
-  const fmt = (val, decimals) => {
-    const n = parseFloat(val);
-    return isNaN(n) ? val : n.toFixed(decimals);
-  };
-
-  const fmtAbv = (val) => {
-    const n = parseFloat(val);
-    return isNaN(n) ? val : n.toFixed(1);
-  };
-
   // ─── Detail view ───────────────────────────────────────────────────────────
   if (selectedRecipe) {
     const recipe = selectedRecipe;
+    const batchSizeL = recipe.batchSizeL;
 
     const toKg = (amt, unit) => {
       const n = parseFloat(amt);
@@ -200,11 +250,47 @@ function RecipePage() {
     };
     const totalFermentablesKg = recipe.fermentables.reduce((s, f) => s + toKg(f.amount, f.unit), 0);
     const totalHopsG = recipe.hops.reduce((s, h) => s + toG(h.amount, h.unit), 0);
-    const isBitteringHop = (h) => parseFloat(h.time) === 60;
+    const isBitteringHop = (h) => parseFloat(h.time) === 60 && h.stage === 'Boil';
     const nonBitteringHopsG = recipe.hops
       .filter((h) => !isBitteringHop(h))
       .reduce((s, h) => s + toG(h.amount, h.unit), 0);
-    const hopsGperL = recipe.batchSize ? nonBitteringHopsG / recipe.batchSize : null;
+    const hopsGperL = batchSizeL ? nonBitteringHopsG / batchSizeL : null;
+
+    // What the beer actually pours: the malt colour, restained by any fruit in
+    // the other-ingredients list. A fruited sour shows red here rather than the
+    // straw its grain bill implies.
+    const predicted = predictBeerColor({
+      ebc: recipe.ebc,
+      batchSizeL,
+      additions: recipe.otherIngredients,
+    });
+    const pourColor = predicted?.hex ?? ebcToColor(recipe.ebc);
+
+    const fermentation = estimateFermentationDays({
+      og: recipe.og,
+      temperatureC: recipe.fermentationTemp,
+      yeast: recipe.yeast,
+    });
+
+    const cost = recipe.cost;
+    const pricing = recipe.pricing;
+    const showCost = pricing?.available && cost && cost.priced + cost.unpriced > 0;
+    const perLitre = showCost && batchSizeL ? cost.usedDkk / batchSizeL : null;
+    const byGroup = showCost
+      ? {
+          Malt: sumCost(recipe.fermentables),
+          Hops: sumCost(recipe.hops),
+          Yeast: sumCost(recipe.yeast),
+          Other: sumCost(recipe.otherIngredients),
+        }
+      : null;
+
+    // The recipe's own price for one line, where the catalogue covered it.
+    const linePrice = (line) => (line.price ? kr(line.price.usedDkk, 0) : null);
+
+    const hopsByStage = HOP_STAGE_ORDER
+      .map((stage) => ({ stage, hops: recipe.hops.filter((h) => (h.stage || 'Other') === stage) }))
+      .filter((group) => group.hops.length > 0);
 
     return (
       <div
@@ -225,7 +311,16 @@ function RecipePage() {
           </button>
         </div>
 
-        <div className={styles.nameCard}>
+        {/* The style banner: the colour this beer wears everywhere in the
+            brewery — keg board, recipe list, here. */}
+        <div
+          className={styles.nameCard}
+          style={(() => {
+            const styleColor = matchContentOption(recipe.name, recipe.style);
+            const hex = styleColor ? contentColors[styleColor] : null;
+            return hex ? { borderLeft: `4px solid ${hex}` } : undefined;
+          })()}
+        >
           <h3 className={styles.recipeName}>{recipe.name}</h3>
           <span className={styles.recipeStyle}>{recipe.style}</span>
         </div>
@@ -259,20 +354,20 @@ function RecipePage() {
             <span className={styles.statLabel}>IBU</span>
             <span className={styles.statValue}>{fmt(recipe.ibu, 1)}</span>
           </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>EBC</span>
+          {/* Brewer's Friend reports 0 for this account's recipes, so BrewPlanner
+              calculates from the grain bill — flagged rather than passed off as
+              the recipe's own figure. The swatch is the pour, fruit included. */}
+          <div className={styles.statCard} title={predicted?.fruit?.note}>
+            <span className={styles.statLabel}>{recipe.ebcEstimated ? 'EBC (est.)' : 'EBC'}</span>
             <span className={styles.statValue}>
               {fmt(recipe.ebc, 1)}
-              <span
-                className={styles.ebcSwatch}
-                style={{ background: ebcToColor(recipe.ebc) }}
-              />
+              <span className={styles.ebcSwatch} style={{ background: pourColor }} />
             </span>
           </div>
-          {recipe.batchSize != null && (
+          {batchSizeL != null && (
             <div className={styles.statCard}>
               <span className={styles.statLabel}>Batch</span>
-              <span className={styles.statValue}>{recipe.batchSize} L</span>
+              <span className={styles.statValue}>{batchSizeL} L</span>
             </div>
           )}
           {recipe.mashTemp && (
@@ -287,7 +382,48 @@ function RecipePage() {
               <span className={styles.statValue}>{recipe.fermentationTemp}</span>
             </div>
           )}
+          {/* When the fermenter comes free, near enough to plan around. An
+              estimate from the strain, the temperature and the gravity — never
+              a substitute for a hydrometer, which is what the tooltip says. */}
+          {fermentation && (
+            <div className={styles.statCard} title={fermentation.note}>
+              <span className={styles.statLabel}>Ferments</span>
+              <span className={styles.statValue}>≈{fermentation.days}d</span>
+            </div>
+          )}
         </div>
+
+        {showCost && (
+          <div className={styles.costCard}>
+            <div className={styles.costFigures}>
+              <div className={styles.costMain}>
+                <span className={styles.statLabel}>Ingredient cost</span>
+                <span className={styles.costTotal}>{cost.priced > 0 ? kr(cost.usedDkk, 0) : '—'}</span>
+              </div>
+              {perLitre != null && cost.priced > 0 && (
+                <div className={styles.costMain}>
+                  <span className={styles.statLabel}>Per litre</span>
+                  <span className={styles.costPerLitre}>{kr(perLitre, 2)}</span>
+                </div>
+              )}
+            </div>
+            <div className={styles.costBreakdown}>
+              {Object.entries(byGroup)
+                .filter(([, total]) => total.priced > 0)
+                .map(([label, total]) => (
+                  <span key={label}>{label} {kr(total.usedDkk, 0)}</span>
+                ))}
+              {cost.unpriced > 0 && (
+                <span
+                  className={styles.costUnpriced}
+                  title="These lines have an amount but no catalogue price, so the total is short of them"
+                >
+                  {cost.unpriced} unpriced
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {recipe.fermentables.length > 0 && (
           <div className={styles.section}>
@@ -300,7 +436,7 @@ function RecipePage() {
             {!collapsed.fermentables && (
               <div className={styles.ingredientList}>
                 {[...recipe.fermentables]
-                  .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+                  .sort((a, b) => toKg(b.amount, b.unit) - toKg(a.amount, a.unit))
                   .map((f, i) => (
                   <div key={i} className={styles.ingredientRow}>
                     <span className={styles.ingredientName}>
@@ -308,11 +444,18 @@ function RecipePage() {
                       {f.ebc != null && (
                         <span className={styles.ebcSwatch} style={{ background: ebcToColor(f.ebc) }} title={`EBC ${f.ebc}`} />
                       )}
+                      {f.lateAddition && (
+                        <span className={styles.flag} title="Kept out of the boil gravity the hops are utilized against">late</span>
+                      )}
+                      {f.fermentable === false && (
+                        <span className={styles.flag} title="Raises the gravity but never attenuates — it lands in the FG">unfermentable</span>
+                      )}
                     </span>
                     <span className={styles.ingredientDetail}>
                       {f.amount} {f.unit}
                       {f.percent ? ` (${f.percent}%)` : ''}
                       {f.ebc != null ? ` · ${f.ebc} EBC` : ''}
+                      {linePrice(f) ? <span className={styles.linePrice}> · {linePrice(f)}</span> : null}
                     </span>
                   </div>
                 ))}
@@ -331,27 +474,34 @@ function RecipePage() {
             </button>
             {!collapsed.hops && (
               <div className={styles.ingredientList}>
-                {recipe.hops.map((h, i) => {
-                  const useLabel = h.use && h.temp
-                    ? `${h.use} @ ${h.temp}°C`
-                    : (h.use || null);
-                  return (
-                    <div key={i} className={styles.hopRow}>
-                      <div className={styles.hopMain}>
-                        <span className={styles.ingredientName}>
-                          {h.name}
-                          {h.aa ? <span className={styles.hopAa}>{h.aa}% AA</span> : ''}
-                        </span>
-                        <span className={styles.hopMeta}>
-                          {h.amount}{h.unit ? ` ${h.unit}` : ''}
-                          {useLabel ? ` · ${useLabel}` : ''}
-                          {h.time != null && h.time !== '' ? ` · ${h.time} min` : ''}
-                        </span>
-                      </div>
-                      {h.ibu ? <span className={styles.hopIbu}>{fmt(h.ibu, 1)} IBU</span> : null}
-                    </div>
-                  );
-                })}
+                {/* Grouped by the stage each addition happens at, in brew-day
+                    order — the schedule a brewer actually works through. */}
+                {hopsByStage.map(({ stage, hops }) => (
+                  <div key={stage} className={styles.hopStage}>
+                    <div className={styles.hopStageLabel}>{stage}</div>
+                    {hops.map((h, i) => {
+                      const useLabel = h.temp ? `${h.use} @ ${h.temp}°C` : (h.use || null);
+                      const time = formatContactTime(h.time, h.timeUnit);
+                      return (
+                        <div key={i} className={styles.hopRow}>
+                          <div className={styles.hopMain}>
+                            <span className={styles.ingredientName}>
+                              {h.name}
+                              {h.aa ? <span className={styles.hopAa}>{h.aa}% AA</span> : ''}
+                            </span>
+                            <span className={styles.hopMeta}>
+                              {h.amount}{h.unit ? ` ${h.unit}` : ''}
+                              {useLabel ? ` · ${useLabel}` : ''}
+                              {time ? ` · ${time}` : ''}
+                              {linePrice(h) ? ` · ${linePrice(h)}` : ''}
+                            </span>
+                          </div>
+                          {h.ibu ? <span className={styles.hopIbu}>{fmt(h.ibu, 1)} IBU</span> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -374,7 +524,8 @@ function RecipePage() {
                       {m.amount}{m.unit ? ` ${m.unit}` : ''}
                       {m.type ? ` · ${m.type}` : ''}
                       {m.use ? ` · ${m.use}` : ''}
-                      {m.time ? ` · ${m.time} min` : ''}
+                      {formatContactTime(m.time, m.timeUnit) ? ` · ${formatContactTime(m.time, m.timeUnit)}` : ''}
+                      {linePrice(m) ? <span className={styles.linePrice}> · {linePrice(m)}</span> : null}
                     </span>
                   </div>
                 ))}
@@ -393,15 +544,27 @@ function RecipePage() {
             </button>
             {!collapsed.yeast && (
               <div className={styles.ingredientList}>
-                {recipe.yeast.map((y, i) => (
-                  <div key={i} className={styles.ingredientRow}>
-                    <span className={styles.ingredientName}>{y.name}</span>
-                    <span className={styles.ingredientDetail}>
-                      {y.amount && y.amountUnit ? `${y.amount} ${y.amountUnit} | ` : ''}{y.lab}
-                      {y.attenuation ? ` | ${y.attenuation}% atten.` : ''}
-                    </span>
-                  </div>
-                ))}
+                {recipe.yeast.map((y, i) => {
+                  const range = y.minTempC != null && y.maxTempC != null
+                    ? `${y.minTempC}–${y.maxTempC}°C`
+                    : null;
+                  return (
+                    <div key={i} className={styles.ingredientRow}>
+                      <span className={styles.ingredientName}>
+                        {y.name}
+                        {y.starter && <span className={styles.flag} title="This recipe calls for a starter">starter</span>}
+                      </span>
+                      <span className={styles.ingredientDetail}>
+                        {y.amount && y.amountUnit ? `${y.amount} ${y.amountUnit} | ` : ''}{y.lab}
+                        {y.form ? ` | ${y.form}` : ''}
+                        {y.attenuation ? ` | ${y.attenuation}% atten.` : ''}
+                        {y.flocculation ? ` | ${y.flocculation} floc.` : ''}
+                        {range ? ` | ${range}` : ''}
+                        {linePrice(y) ? <span className={styles.linePrice}> · {linePrice(y)}</span> : null}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -423,12 +586,12 @@ function RecipePage() {
                       <div key={i} className={styles.mashStepRow}>
                         <span className={styles.mashStepNumber}>{i + 1}</span>
                         <div className={styles.mashStepInfo}>
-                          <span className={styles.mashStepName}>{s.name || `Step ${i + 1}`}</span>
+                          <span className={styles.mashStepName}>{s.name || s.type || `Step ${i + 1}`}</span>
                           <span className={styles.mashStepDetail}>
                             {s.temp || ''}
                             {s.temp && s.time ? ' · ' : ''}
                             {s.time ? `${s.time} min` : ''}
-                            {s.amount ? ` · ${s.amount}` : ''}
+                            {s.amount ? ` · ${s.amount}${s.amountUnit ? ` ${s.amountUnit}` : ''}` : ''}
                           </span>
                         </div>
                       </div>
@@ -456,9 +619,8 @@ function RecipePage() {
             </button>
             {!collapsed.water && (() => {
               const wp = recipe.waterProfile;
-              const batchL = parseFloat(recipe.batchSize);
-              const hasBatch = !isNaN(batchL) && batchL > 0;
-              const calcGrams = (mgPerL) => (mgPerL * batchL) / 1000;
+              const hasBatch = batchSizeL != null && batchSizeL > 0;
+              const calcGrams = (mgPerL) => (mgPerL * batchSizeL) / 1000;
               const minerals = [
                 { label: 'Calcium',      key: 'calcium',    source: 'Gypsum' },
                 { label: 'Magnesium',    key: 'magnesium',  source: 'Epsom salt' },
@@ -508,6 +670,48 @@ function RecipePage() {
             })()}
           </div>
         )}
+
+        {/* Every batch brewed from this sheet, newest first — what it came out
+            at last time, standing at the rig about to do it again. */}
+        {brewHistory.length > 0 && (
+          <div className={styles.section}>
+            <button className={styles.sectionTitle} onClick={() => { playClick(); toggleSection('brewHistory'); }}>
+              <span>📖 Brew History <span className={styles.sectionSubtitle}>{brewHistory.length} brew{brewHistory.length === 1 ? '' : 's'}</span></span>
+              <svg className={`${styles.collapseChevron} ${collapsed.brewHistory ? styles.collapseChevronCollapsed : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {!collapsed.brewHistory && (
+              <div className={styles.ingredientList}>
+                {brewHistory.map((brew) => {
+                  const og = brew.measured?.og;
+                  const fg = brew.measured?.fg;
+                  const facts = [
+                    og ? (fg ? `${og} → ${fg}` : `OG ${og}`) : null,
+                    brew.measured?.volumeL != null ? `${brew.measured.volumeL} L` : null,
+                  ].filter(Boolean);
+                  return (
+                    <div key={brew.id} className={styles.ingredientRow}>
+                      <span className={styles.ingredientName}>
+                        {brewDate(brew.brewedAt)}
+                        {brew.brewNumber > 1 && <span className={styles.flag}>#{brew.brewNumber}</span>}
+                        {brew.rating != null && (
+                          <span className={styles.rating} title={`Rated ${brew.rating} of 5`}>
+                            {'★'.repeat(brew.rating)}
+                          </span>
+                        )}
+                      </span>
+                      <span className={styles.ingredientDetail}>
+                        {brew.status}
+                        {facts.length > 0 ? ` · ${facts.join(' · ')}` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -524,7 +728,7 @@ function RecipePage() {
     >
       <div className={styles.header}>
         <h2 className={styles.title}>Recipes</h2>
-        <button className={styles.refreshBtn} onClick={() => { playClick(); fetchRecipes(true); }} disabled={loading}>
+        <button className={styles.refreshBtn} onClick={() => { playClick(); fetchRecipes(); }} disabled={loading}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M23 4v6h-6" />
             <path d="M1 20v-6h6" />
@@ -550,32 +754,46 @@ function RecipePage() {
 
       {!loading && !error && recipes.length > 0 && (
         <div className={styles.recipeList}>
-          {recipes.map((r) => (
-            <button
-              key={r.id}
-              className={styles.recipeListItem}
-              onClick={() => { playNavigate(); selectRecipe(r.id); }}
-              disabled={detailLoading}
-            >
-              <div className={styles.recipeListInfo}>
-                <div className={styles.recipeListNameRow}>
-                  <span className={styles.recipeListName}>{r.name}</span>
-                  <span
-                    className={styles.ebcSwatch}
-                    style={{ background: ebcToColor(r.ebc) }}
-                  />
+          {recipes.map((r) => {
+            const styleMatch = matchContentOption(r.name, r.style);
+            const styleColor = styleMatch ? contentColors[styleMatch] : null;
+            const count = brewCounts[String(r.id)];
+            return (
+              <button
+                key={r.id}
+                className={styles.recipeListItem}
+                style={styleColor ? { borderLeft: `3px solid ${styleColor}` } : undefined}
+                onClick={() => { playNavigate(); selectRecipe(r.id); }}
+                disabled={detailLoading}
+              >
+                <div className={styles.recipeListInfo}>
+                  <div className={styles.recipeListNameRow}>
+                    <span className={styles.recipeListName}>{r.name}</span>
+                    <span
+                      className={styles.ebcSwatch}
+                      style={{ background: ebcToColor(r.ebc) }}
+                    />
+                    {count && (
+                      <span
+                        className={styles.brewCount}
+                        title={`Brewed ${count.count} time${count.count === 1 ? '' : 's'} · last on ${brewDate(count.lastBrewedAt)}`}
+                      >
+                        ×{count.count}
+                      </span>
+                    )}
+                  </div>
+                  <span className={styles.recipeListStyle}>{r.style}</span>
                 </div>
-                <span className={styles.recipeListStyle}>{r.style}</span>
-              </div>
-              <div className={styles.recipeListStats}>
-                <span>{fmtAbv(r.abv)}%</span>
-                <span>{fmt(r.ibu, 0)} IBU</span>
-              </div>
-              <svg className={styles.chevron} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            </button>
-          ))}
+                <div className={styles.recipeListStats}>
+                  <span>{fmtAbv(r.abv)}%</span>
+                  <span>{fmt(r.ibu, 0)} IBU</span>
+                </div>
+                <svg className={styles.chevron} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

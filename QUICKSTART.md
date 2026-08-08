@@ -174,6 +174,18 @@ Save and reboot:
 sudo reboot
 ```
 
+### Desktop Icon (One-time)
+
+For getting the GUI back after **Ctrl+Shift+Q** without a terminal:
+
+```bash
+~/brew-system-v3/install-desktop-icon.sh
+```
+
+Puts a **Brew System** icon on the desktop and in the menu. Double-clicking it
+starts the kiosk, or raises the window if it is already running — see
+[Desktop icon](README.md#getting-back-in--the-desktop-icon) in the README.
+
 ## Component Overview
 
 ### Strict Layout Rules (Brewing Panel)

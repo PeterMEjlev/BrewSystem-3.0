@@ -254,6 +254,43 @@ these four settings at startup, so an older autostart file carrying `@xset
 
 Press **Ctrl+Shift+Q** to exit kiosk mode for maintenance.
 
+#### Getting back in — the desktop icon
+
+Ctrl+Shift+Q drops you to the desktop, and until the next reboot there is no
+obvious way back. Install a **Brew System** icon that opens the GUI again:
+
+```bash
+~/brew-system-v3/install-desktop-icon.sh
+```
+
+That writes a desktop entry (and a matching menu entry) pointing at
+`brew-system-gui.sh` in the checkout, so a `git pull` updates what the icon does
+and the installer only ever needs running once.
+
+What it does when double-clicked:
+
+- **Already running** → raises that window instead of starting a second kiosk,
+  and wakes the panel if it has gone to sleep. Two Electron windows driving the
+  same 8.5 kW elements is not a state worth allowing, so this is a check, not a
+  courtesy.
+- **Not running** → starts it exactly as the autostart line does, via
+  `electron/launch.js` (so unclutter comes with it). If node isn't on the
+  launcher's `PATH` — a desktop entry gets no login shell — it falls back to
+  Electron's own binary.
+- **Backend stopped** → tries `sudo -n systemctl start brew-system.service`
+  first, since a stopped backend otherwise leaves the kiosk on its "waiting for
+  the backend" page indefinitely. If that isn't permitted it opens the GUI
+  anyway and logs why: the waiting page naming the address it can't reach is
+  more use than an icon that appears to do nothing.
+
+**It never touches the hardware, and never restarts a backend that is already
+running** — closing and reopening the GUI mid-boil is safe; the rig carries on
+regardless of whether anything is looking at it.
+
+Anything that goes wrong is logged to
+`~/.local/state/brew-system/gui-launcher.log`, and reported on screen through
+`notify-send`/`zenity` if either is installed.
+
 ### 7. Enable Auto-login (Optional)
 
 ```bash
@@ -335,6 +372,38 @@ bk_pin = config['gpio']['pot']['bk']
   one. If `config.json` turns out to be unreadable at startup the backend boots
   on `config.default.json` and says so on screen, rather than refusing to start
   on a brew day.
+
+### Which settings are shared with BrewPlanner
+
+Most settings belong to exactly one machine and stay there. The rule for the few
+that don't: **whichever machine owns the thing owns the setting for it**, and the
+other one follows at runtime. Neither ever writes to the other's settings.
+
+| Setting | Owned by | Followed by |
+|---|---|---|
+| Power budget (`max_watts`, element watts) | This rig | BrewPlanner's Brew System page, so its sliders enforce the same budget |
+| Auto-efficiency curves | This rig | Same |
+| Theme colours, including the three vessel colours | This rig | BrewPlanner's mirrored panel, rig card and temperature chart |
+| Keg content colours | BrewPlanner (Settings → Keg content colours) | This rig's Keg Info page |
+
+Both directions fail soft. BrewPlanner draws the rig's panel in the rig's shipped
+defaults when it can't reach it — which is most of the year, since the rig is
+powered off between brews — and the Keg Info page here keeps its built-in palette
+when there's no web server to ask. Those built-in values are BrewPlanner's own
+shipped palette, so a rig on the bench looks right rather than looking broken.
+
+Kegs are worth a word: both machines read the *same* published Google Sheet, so a
+keg has to look the same on both screens. BrewPlanner has the editor for the
+palette, so it owns it; this rig reads it through
+`GET /api/brew-planner/keg-colors`. The recipe→contents matching rules
+(`src/utils/kegContent.js`) are kept in step with BrewPlanner's for the same
+reason — linking the same recipe in either place should label the keg the same.
+
+Everything else is deliberately one-sided: GPIO pins, sensor serials and
+calibration are this rig's wiring and are never exposed remotely; screen sleep
+and cursor visibility are this panel's own display; and BrewPlanner's fermenter,
+device-fleet, notification and account settings have nothing to say about a
+brewing rig.
 
 ### Sensor calibration
 
@@ -530,11 +599,10 @@ Worth knowing:
   BrewPlanner already has a session in progress, and if it does, goes straight to
   the brewing screen. A kiosk that reloads during the mash comes back to the
   screen you were looking at, not to a menu offering to start a second session.
-- **The recipes are BrewPlanner's, not Brewer's Friend's.** The session is filed
-  against a recipe in BrewPlanner's library, and a Brewer's Friend recipe that
-  has never been imported there has an id it would refuse. Offering only what can
-  actually be started beats a picker where some rows fail. Import from Brewer's
-  Friend on BrewPlanner's own Recipes page.
+- **The recipes are BrewPlanner's.** The session is filed against a recipe in its
+  library, and the picker reads that same library — the one the [Recipe
+  tab](#recipes) shows. Import from Brewer's Friend on BrewPlanner's own Recipes
+  page.
 - **No web server, no sessions — but still a rig.** With `BREW_PLANNER_URL`
   unset or the other Pi rebooting, the first choice greys out and says why. The
   second always works. A rig on the bench must never be stopped from brewing by a
@@ -591,6 +659,54 @@ The system implements automatic efficiency control:
 - **< 0.5°C from target**: 0% power
 
 Manual efficiency control is disabled when regulation is enabled.
+
+## Recipes
+
+The Recipe tab reads **BrewPlanner's library**, not Brewer's Friend. That means
+one library across the brewery: what the Recipe tab shows, what the start menu
+offers to brew, and what a keg can be linked to are the same list, and a recipe
+written in BrewPlanner is visible here rather than only existing on the web
+server. It also means the brew sheet arrives with the figures BrewPlanner works
+out and this rig has no way to:
+
+- **What the batch costs** — the total, per litre, and split by malt / hops /
+  yeast / other, with a price on each ingredient line. From BrewPlanner's
+  scraped price catalogue, so it can only be read here, never edited. Lines the
+  catalogue doesn't cover are counted as "unpriced" rather than silently
+  omitted, because the total is short of them.
+- **A colour for a grain bill that reports none** — Brewer's Friend returns 0
+  EBC for this account, so BrewPlanner calculates from the grain bill (Morey);
+  the tile says "EBC (est.)" rather than passing an estimate off as the recipe's
+  own figure.
+- **The hop schedule in brew order** — additions grouped by Mash / First Wort /
+  Boil / Whirlpool / Dry Hop, and each contact time in the unit it was recorded
+  in. Dry hops are stored in *days*: this page used to render a 5-day dry hop as
+  "5 min".
+- **Fermentable flags** — "late" (added after the boil, so it stays out of the
+  gravity the hops are utilized against) and "unfermentable" (lactose and
+  friends: they raise the gravity and land in the FG).
+- **Brew history** — every batch brewed from the sheet, with what it measured
+  and how it was rated, and a ×N badge on the list.
+
+Two things are worked out here rather than fetched, both ported from BrewPlanner
+so a recipe reads the same in either place:
+
+- **What the beer actually pours.** The malt colour restained by any fruit in
+  the other-ingredients list, so a fruited sour shows red rather than the straw
+  its grain bill implies (`src/utils/beerColorPrediction.js`).
+- **Roughly how long it will ferment**, from the strain, the temperature and the
+  gravity (`src/utils/fermentationEstimate.js`). A planning figure for when the
+  fermenter comes free — the tooltip says so, and says to confirm with a
+  hydrometer.
+
+The style banner down the left of a recipe is the keg palette's colour for that
+beer, so a batch wears one colour on the keg board, in this list and on its
+sheet — see [Which settings are shared with BrewPlanner](#which-settings-are-shared-with-brewplanner).
+
+**No BrewPlanner, no recipes.** The tab says so and everything else on the rig
+keeps working; the hardware has never needed a recipe to run. The rig no longer
+talks to Brewer's Friend at all, so `BREWERSFRIEND_API_KEY` is unused — importing
+from Brewer's Friend is now BrewPlanner's job, on its own Recipes page.
 
 ## Component Details
 

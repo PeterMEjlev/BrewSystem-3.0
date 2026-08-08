@@ -527,3 +527,110 @@
   color: var(--color-text-muted);
   font-family: var(--font-mono);
 }
+
+/* ─── Cost, flags and history ──────────────────────────────────────────────
+   What a batch costs comes from BrewPlanner's price catalogue; the rig only
+   displays it. Read-only by design — this is a brewing screen, not where a
+   price list gets edited. */
+
+.costCard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 24px;
+  margin-bottom: 16px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.costFigures {
+  display: flex;
+  align-items: baseline;
+  gap: 28px;
+}
+
+.costMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.costTotal {
+  font-size: var(--recipe-font-xl, 24px);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.costPerLitre {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.costBreakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-dark);
+}
+
+/* Amber, not red: an unpriced line is a gap in the catalogue, not a fault in
+   the recipe — it just means the total is short of that ingredient. */
+.costUnpriced {
+  color: var(--color-accent-orange);
+}
+
+.linePrice {
+  color: var(--color-text-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "late", "unfermentable", "starter", "#2" — a word the row needs to carry
+   without competing with the ingredient's own name. */
+.flag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-dark);
+  background: rgba(100, 116, 139, 0.18);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.rating {
+  margin-left: 8px;
+  color: #fbbf24;
+  letter-spacing: 1px;
+}
+
+.brewCount {
+  padding: 1px 6px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  background: rgba(100, 116, 139, 0.22);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+/* The hop schedule reads as the stages of a brew day, so each group says which
+   one it is rather than every row repeating it. */
+.hopStage + .hopStage {
+  margin-top: 14px;
+}
+
+.hopStageLabel {
+  margin-bottom: 6px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--color-text-dark);
+}
