@@ -60,11 +60,23 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  /* Roughly four rows before it scrolls, so a long BrewPlanner library cannot
-     push the date field and the buttons off the dialog. */
+  /* Roughly three and a half rows before it scrolls: the half row is the whole
+     affordance now that there is no scrollbar, and it stops a long BrewPlanner
+     library pushing the date field and the buttons off the dialog. */
   max-height: 264px;
   overflow-y: auto;
-  padding-right: 4px;
+  /* No scrollbar. A 12px bar (see App.css) is a mouse-sized target nobody can
+     hit with a fingertip, and it sat there taking width from every row while
+     being useless to the one input this rig has. The list is dragged instead —
+     see startDragScroll in the dialog. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Keep an overscroll at either end from scrolling the dialog behind it. */
+  overscroll-behavior: contain;
+}
+
+.recipeList::-webkit-scrollbar {
+  display: none;
 }
 
 .recipeRow {
