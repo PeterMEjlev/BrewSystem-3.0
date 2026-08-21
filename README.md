@@ -106,6 +106,44 @@ Worth knowing:
   into the session log, so rolling the log — `initialize`, or starting a brew
   session — starts the stages over with it.
 
+### Picking up a deploy
+
+The kiosk reloads itself when the UI it is running is no longer the one being
+served, so pressing **Update brew system** on BrewPlanner is all it takes — no
+walking to the rig, no relaunching the GUI.
+
+Two things make that work, and both are needed:
+
+- **`index.html` is served `Cache-Control: no-store`** (`_index_response` in
+  `backend/main.py`). It is the only file that names the current bundle, so it
+  is the only one that must always be fetched. Served with no header at all,
+  Chromium falls back to *heuristic* caching — it invents a freshness lifetime
+  of roughly 10% of the file's age — so a panel that had been running the same
+  build for weeks went on serving it from disk cache for days after a deploy,
+  without asking this server anything. A reboot did not help: that cache lives
+  in Electron's `userData` and outlives one. The hashed files under `/assets`
+  need no such header, because a new build gives them new names.
+- **The snapshot carries a `uiBuild`** — a hash of `index.html`, so it moves
+  when the frontend is rebuilt and stays put when only the backend changes. A
+  deploy restarts the backend, which drops every socket; on reconnect a screen
+  compares the build it is running against the one now being served, and
+  reloads if they differ (`checkUiBuild` in `src/utils/liveState.js`). A
+  backend-only deploy therefore does not bounce anyone.
+
+Reloading mid-brew is safe by construction — the backend owns regulation and
+the session log, and the socket's opening snapshot is the whole of a client's
+state — and the deploy refuses to run while a heater or pump is on in any case.
+
+If a panel is ever still stale after a deploy, its own cache is the thing to
+clear; the GUI can be relaunched from the desktop icon without touching the
+backend:
+
+```bash
+pkill -f "electron.*BrewSystem-3.0"
+rm -rf ~/.config/brew-system-v3/Cache ~/.config/brew-system-v3/"Code Cache"
+cd ~/Desktop/BrewSystem-3.0 && ./brew-system-gui.sh
+```
+
 ## Development
 
 ### Prerequisites

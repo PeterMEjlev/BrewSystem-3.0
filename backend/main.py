@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import hashlib
 import json
 import logging
 import os
@@ -1656,7 +1657,13 @@ async def live_state_socket(websocket: WebSocket):
         _last_pushed_view = _comparable(state)
         _ws_clients.add(websocket)
         try:
-            await websocket.send_json({"type": "snapshot", "state": state})
+            # uiBuild rides along on the snapshot because a deploy restarts
+            # this process, which drops every socket; the reconnect that follows
+            # is where a screen finds out its page is out of date. See
+            # liveState.js, which reloads itself on a change.
+            await websocket.send_json(
+                {"type": "snapshot", "state": state, "uiBuild": _ui_build()}
+            )
         except Exception:
             _ws_clients.discard(websocket)
             return
@@ -2140,6 +2147,39 @@ async def get_recipe_brew_sessions(recipe_id: str) -> Dict[str, Any]:
 # Serve React build
 STATIC_DIR = (Path(__file__).parent.parent / "dist").resolve()
 
+
+def _ui_build() -> Optional[str]:
+    """Which build of the UI this backend is serving, or None if it serves none.
+
+    index.html names the hashed bundle it loads, so its contents change whenever
+    the frontend is rebuilt and stay put when only the backend moves. That makes
+    a hash of it exactly the question a connected screen needs answered: "is the
+    page I am running still the page you are serving?"
+
+    Read per call rather than cached. It is a few hundred bytes, only read when
+    a socket opens, and reading it fresh means a rebuild is noticed even if the
+    backend was not restarted after it.
+    """
+    try:
+        return hashlib.sha256((STATIC_DIR / "index.html").read_bytes()).hexdigest()[:12]
+    except OSError:
+        return None  # no dist/ — a dev machine running vite separately
+
+
+def _index_response() -> FileResponse:
+    """The SPA entry point, with the one header it must never be served without.
+
+    index.html is the only file that names the current bundle, so it is the only
+    one that must always be fetched. With no Cache-Control at all, Chromium
+    falls back to heuristic caching — it invents a freshness lifetime of roughly
+    10% of the file's age — so a kiosk that had been running the same build for
+    weeks would go on serving it from disk cache for days after a deploy,
+    without asking this server anything. The hashed assets under /assets need no
+    such header: a new build gives them new names, which is what the hash is for.
+    """
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-store"})
+
+
 if STATIC_DIR.exists():
     # Mount static files
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
@@ -2156,7 +2196,7 @@ if STATIC_DIR.exists():
         if file_path and file_path.is_relative_to(STATIC_DIR) and file_path.is_file():
             return FileResponse(file_path)
         # Otherwise, serve index.html for SPA routing
-        return FileResponse(STATIC_DIR / "index.html")
+        return _index_response()
 
 
 if __name__ == "__main__":

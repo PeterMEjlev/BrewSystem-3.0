@@ -60,6 +60,14 @@ def test_the_websocket_hands_out_a_full_snapshot(client):
     }
 
 
+def test_the_snapshot_says_which_ui_build_is_being_served(client):
+    """The client reloads off this field, so it has to be on the wire — a
+    snapshot without it leaves a kiosk unable to tell it has gone stale."""
+    with client.websocket_connect("/api/ws") as ws:
+        message = ws.receive_json()
+    assert "uiBuild" in message
+
+
 def test_the_stage_endpoint_reaches_the_state_endpoint(client):
     assert client.post("/api/hardware/stage", json={"action": "next"}).status_code == 200
     state = client.get("/api/hardware/state").json()

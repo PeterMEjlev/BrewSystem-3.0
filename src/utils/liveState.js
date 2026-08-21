@@ -32,6 +32,33 @@ const isDevEnvironment = () => {
   }
 };
 
+/**
+ * The UI build this page was loaded from, as the backend last reported it.
+ *
+ * A deploy restarts the backend, which drops every socket; the reconnect that
+ * follows carries the build now being served. If that is not the build this
+ * page is running, the page is stale and reloads itself — otherwise a kiosk
+ * nobody touches goes on showing the old UI until someone notices, which is
+ * exactly what used to happen.
+ *
+ * Reloading is safe here by construction: the backend owns regulation and the
+ * session log, so a reload cannot disturb a brew (see BrewingPanel), and the
+ * deploy that triggers it refuses to run while a heater or pump is on anyway.
+ */
+let uiBuild = null;
+let reloading = false;
+
+function checkUiBuild(build) {
+  if (!build) return;              // backend serving no dist/ — nothing to compare
+  if (uiBuild === null) {
+    uiBuild = build;               // first snapshot: this is what we are running
+    return;
+  }
+  if (uiBuild === build || reloading) return;
+  reloading = true;
+  window.location.reload();
+}
+
 let socket = null;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
@@ -102,6 +129,9 @@ function handleMessage(message) {
   switch (message.type) {
     case 'snapshot':
       markSynced();
+      // Before anything else: if this reconnect is to a backend serving a newer
+      // UI, nothing below matters — the page is about to be replaced.
+      checkUiBuild(message.uiBuild);
       publish({ state: message.state, frozenSince: null });
       // Whatever happened while we were away is now a hole in the chart, and
       // only the history endpoint can fill it.
