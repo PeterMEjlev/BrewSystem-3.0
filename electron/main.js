@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const path = require('path');
@@ -29,26 +29,54 @@ let displayAsleep = false;
 
 // --- Display power (kiosk screen sleep) ---------------------------------
 // A Pi has no suspend-to-RAM, so "sleep" is the HDMI panel only — the backend
-// carries on reading sensors and regulating throughout. X is asked first
-// (instant, and any touch wakes the panel by itself); vcgencmd is the fallback
-// for setups where DPMS isn't available.
+// carries on reading sensors and regulating throughout.
+//
+// Three ways to do it, tried in order, because which one works depends on the
+// session this is running under:
+//
+//   wlopm      Wayland (labwc, which is what current Pi OS boots into). Powers
+//              the output down without destroying it, so the kiosk window
+//              keeps its output and stays fullscreen. Much the best outcome.
+//   xset dpms  Real X11 only — XWayland has no DPMS extension at all.
+//   vcgencmd   Last resort: it disables HDMI outright, which drops the head
+//              and un-fullscreens every window on it. restoreKiosk() below is
+//              what picks up the pieces afterwards.
 
-function runQuiet(command, args) {
+// The Wayland tools need the socket spelled out: labwc's autostart launches
+// the kiosk without WAYLAND_DISPLAY anywhere in its environment.
+function waylandEnv() {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+  return {
+    ...process.env,
+    WAYLAND_DISPLAY: process.env.WAYLAND_DISPLAY || 'wayland-0',
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`,
+  };
+}
+
+function runQuiet(command, args, options = {}) {
   return new Promise((resolve) => {
     try {
-      const child = spawn(command, args, { stdio: 'ignore' });
+      const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'], ...options });
+      let stderr = '';
+      if (child.stderr) child.stderr.on('data', (chunk) => { stderr += chunk; });
       child.on('error', () => resolve(false));
-      child.on('exit', (code) => resolve(code === 0));
+      // Exit 0 is not proof it did anything. Under XWayland `xset dpms force
+      // off` prints "server does not have extension for dpms option" and still
+      // reports success — which used to stop the fallback chain dead right
+      // here and leave the panel lit through every sleep.
+      child.on('exit', (code) => {
+        resolve(code === 0 && !/does not have extension/i.test(stderr));
+      });
     } catch {
       resolve(false);
     }
   });
 }
 
-// Try each command in turn, stop at the first that succeeds.
+// Try each command in turn, stop at the first that actually works.
 async function runFirstWorking(commands) {
-  for (const [command, args] of commands) {
-    if (await runQuiet(command, args)) return true;
+  for (const [command, args, options] of commands) {
+    if (await runQuiet(command, args, options)) return true;
   }
   return false;
 }
@@ -69,6 +97,7 @@ async function sleepDisplay() {
   displayAsleep = true;
   if (!isLinux) return; // dev machines: the black overlay is the whole effect
   const ok = await runFirstWorking([
+    ['wlopm', ['--off', '*'], { env: waylandEnv() }],
     ['xset', ['dpms', 'force', 'off']],
     ['vcgencmd', ['display_power', '0']],
   ]);
@@ -80,9 +109,13 @@ async function wakeDisplay() {
   displayAsleep = false;
   if (!isLinux) return;
   await runFirstWorking([
+    ['wlopm', ['--on', '*'], { env: waylandEnv() }],
     ['xset', ['dpms', 'force', 'on']],
     ['vcgencmd', ['display_power', '1']],
   ]);
+  // The vcgencmd route back brings the output up as a brand new head, and the
+  // window it un-fullscreened on the way down does not return by itself.
+  scheduleKioskRestore('display wake');
 }
 
 // Quitting with the panel still off would leave a Pi that looks bricked, and
@@ -90,14 +123,80 @@ async function wakeDisplay() {
 function wakeDisplaySync() {
   if (!displayAsleep || !isLinux) return;
   displayAsleep = false;
-  for (const [command, args] of [
+  for (const [command, args, options] of [
+    ['wlopm', ['--on', '*'], { env: waylandEnv() }],
     ['xset', ['dpms', 'force', 'on']],
     ['vcgencmd', ['display_power', '1']],
   ]) {
     try {
-      if (spawnSync(command, args, { stdio: 'ignore' }).status === 0) return;
+      const result = spawnSync(command, args, {
+        stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8', ...options,
+      });
+      if (result.status === 0 && !/does not have extension/i.test(result.stderr || '')) return;
     } catch { /* try the next one */ }
   }
+}
+
+// --- Kiosk geometry -----------------------------------------------------
+// The panel going to sleep can take the whole output with it: vcgencmd
+// disables HDMI outright, and the monitor's own standby drops the hotplug
+// line by itself. Either way the compositor destroys the output, and labwc
+// answers by pulling every window on it out of fullscreen and restoring it to
+// its pre-fullscreen size. Nothing puts that back when the output returns, so
+// the kiosk is left as a small window in the corner of the screen — narrow
+// enough that the brewing screen drops to its one-column layout and shows
+// nothing but the BK card.
+//
+// So re-assert it: on display changes, on losing fullscreen, and on waking.
+// What gets tested is the window's real geometry rather than Electron's idea
+// of it, because the compositor moves it without telling Electron.
+
+let kioskRestoreTimer = null;
+
+function restoreKiosk(reason) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+
+  const { bounds } = screen.getPrimaryDisplay();
+  const current = win.getBounds();
+  if (win.isFullScreen() && current.width === bounds.width && current.height === bounds.height) {
+    return;
+  }
+
+  console.log(
+    `[Kiosk] ${reason}: window is ${current.width}x${current.height} on a ` +
+    `${bounds.width}x${bounds.height} display — restoring fullscreen`
+  );
+
+  // Drop the states before setting them again. The compositor can have taken
+  // the window out of fullscreen without Electron noticing, and asking for a
+  // state it believes it already holds does nothing at all.
+  win.setKiosk(false);
+  win.setFullScreen(false);
+  win.setBounds(bounds);
+  win.setFullScreen(true);
+  win.setKiosk(true);
+  win.focus();
+}
+
+// The output comes back in stages — the head reappears, then kanshi re-applies
+// the mode — so measuring the moment the first event lands reads a size that
+// is about to change again.
+function scheduleKioskRestore(reason, delay = 750) {
+  clearTimeout(kioskRestoreTimer);
+  kioskRestoreTimer = setTimeout(() => restoreKiosk(reason), delay);
+}
+
+function watchDisplayChanges(win) {
+  screen.on('display-added', () => scheduleKioskRestore('display added'));
+  screen.on('display-removed', () => scheduleKioskRestore('display removed'));
+  screen.on('display-metrics-changed', () => scheduleKioskRestore('display metrics changed'));
+
+  // Belt and braces. An output being destroyed does not always reach Electron
+  // as a display event under XWayland, but the window being resized out from
+  // under the kiosk always shows up as one of these.
+  win.on('leave-full-screen', () => scheduleKioskRestore('left fullscreen'));
+  win.on('resize', () => scheduleKioskRestore('resized', 1500));
 }
 
 const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
@@ -222,7 +321,13 @@ ipcMain.on('bruce-speak', (_event, message) => {
 
 // IPC handlers: frontend idle timer drives the screen
 ipcMain.on('display-sleep', () => { sleepDisplay(); });
-ipcMain.on('display-wake', () => { wakeDisplay(); });
+ipcMain.on('display-wake', () => {
+  wakeDisplay();
+  // Also covers the panel having slept on its own: the monitor's standby drops
+  // the head without sleepDisplay() ever being called, so wakeDisplay() sees
+  // nothing to do and would not schedule the check itself.
+  scheduleKioskRestore('touch to wake');
+});
 
 // IPC handler: frontend sets Bruce speech volume
 ipcMain.on('bruce-volume', (_event, gain) => {
@@ -232,8 +337,18 @@ ipcMain.on('bruce-volume', (_event, gain) => {
 });
 
 async function createWindow() {
+  // Worth spelling out even though the window opens straight into kiosk mode:
+  // this is the size the compositor restores to if it ever drops the window
+  // out of fullscreen. Left unset it is Electron's 800x600 default, which is
+  // how the kiosk used to come back from a display sleep as a small window.
+  const { bounds } = screen.getPrimaryDisplay();
+
   const win = new BrowserWindow({
     icon: path.join(__dirname, '..', 'Icon_App.png'),
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     kiosk: true,
     fullscreen: true,
     frame: false,
@@ -250,6 +365,7 @@ async function createWindow() {
   win.setMenu(null);
 
   configureDisplayPower();
+  watchDisplayChanges(win);
 
   // Escape hatch: Ctrl+Shift+Q to quit kiosk mode
   globalShortcut.register('CommandOrControl+Shift+Q', () => {
