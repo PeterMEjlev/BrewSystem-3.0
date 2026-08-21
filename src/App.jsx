@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BruceHistoryProvider } from './contexts/BruceHistoryContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import BottomNav from './components/BottomNav/BottomNav';
 import StartMenu from './components/StartMenu/StartMenu';
+import ResumeSessionDialog from './components/StartMenu/ResumeSessionDialog';
 import BrewingPanel from './components/BrewingPanel/BrewingPanel';
 import TemperatureChart from './components/TemperatureChart/TemperatureChart';
 import RecipePage from './components/RecipePage/RecipePage';
@@ -21,6 +22,13 @@ function AppShell() {
   // the brewing screen.
   const [activePanel, setActivePanel] = useState(null);
   const [bruceState, setBruceState] = useState('idle');
+  // An interrupted brew the backend picked back up on its way in, waiting to be
+  // confirmed. Null when there is nothing to confirm, which is almost always.
+  const [resume, setResume] = useState(null);
+  // Where the launch check landed. Held here rather than in state because it is
+  // only read once the resume dialog is answered, and only if it is answered
+  // with "start fresh".
+  const launchPanel = useRef('home');
   const { settings } = useSettings();
   const { asleep, wake } = useScreenSleep();
 
@@ -36,18 +44,50 @@ function AppShell() {
   // the screen they were looking at, not a menu offering to start a second one.
   // An unreachable web server answers `active: false`, which lands on the menu:
   // the right place to be told a session can't be started.
+  //
+  // Ahead of that, the rig's own answer: whether the backend came back up in
+  // the middle of a brew and has picked it up pending confirmation. That one
+  // outranks the routing, because until it is answered there is no telling
+  // which brew a brewing screen would be showing.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let active = false;
-      try {
-        const response = await fetch('/api/brew-planner/active-brew');
-        if (response.ok) active = Boolean((await response.json()).active);
-      } catch { /* no web server — the menu is the honest answer */ }
-      if (!cancelled) setActivePanel(active ? 'brewing' : 'home');
+      // One LAN hop to the web server and one local read, asked together so
+      // the launch settles in the slower of the two rather than both.
+      const [active, state] = await Promise.all([
+        fetch('/api/brew-planner/active-brew')
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null), /* no web server — the menu is the honest answer */
+        fetch('/api/hardware/state')
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
+      if (cancelled) return;
+      launchPanel.current = active?.active ? 'brewing' : 'home';
+      if (state?.sessionResume?.pending) {
+        setResume({ offer: state.sessionResume, timer: state.timer });
+        return; // activePanel stays null: nothing is drawn behind the question
+      }
+      setActivePanel(launchPanel.current);
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Answer the resume question and get out of the way. The POST is what makes
+  // it stick; the rig has already adopted the brew, so a backend that fails to
+  // answer here leaves the safe outcome in place and the screen still has to
+  // move on rather than trapping the brewer behind a dialog.
+  const answerResume = async (action) => {
+    try {
+      await fetch('/api/hardware/session/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+    } catch { /* nothing to recover — see above */ }
+    setResume(null);
+    setActivePanel(action === 'resume' ? 'brewing' : launchPanel.current);
+  };
 
   // Log the batch on BrewPlanner, then get out of the way — the brewer pressed
   // this because they are about to start brewing.
@@ -99,6 +139,14 @@ function AppShell() {
         {activePanel === 'kegs' && <KegStatusPage />}
         {activePanel === 'bruce' && <BruceHistoryPage />}
         {activePanel === 'settings' && <Settings />}
+        {resume && (
+          <ResumeSessionDialog
+            offer={resume.offer}
+            timer={resume.timer}
+            onResume={() => answerResume('resume')}
+            onStartFresh={() => answerResume('fresh')}
+          />
+        )}
       </main>
       {/* No nav until we know where we opened — it would otherwise be a way to
           navigate away from a decision that hasn't been made yet. */}

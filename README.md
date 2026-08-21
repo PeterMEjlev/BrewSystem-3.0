@@ -86,6 +86,25 @@ Worth knowing:
 - **Chart points are pushed as they are logged.** The history endpoint is still
   there, used for the first paint and to fill whatever a dropped connection
   missed.
+- **A restart mid-brew does not lose the brew.** The session log, the brew
+  stage and its marks, the timer and the set values are written to disk as they
+  change (`session_logs/resume_state.json`). On startup the backend reopens the
+  log it was writing and puts the rest back, then asks the brewer to confirm —
+  offering the choice only when there are signs of a brew in progress, and only
+  within 6 hours, so a reboot between brews still opens straight onto the menu.
+  A running timer keeps counting through the outage, because a service restart
+  does not stop the wort boiling. **Nothing that closes a relay is restored**:
+  GPIO comes up LOW and regulation comes back disarmed, since the regulator
+  turns elements on by itself and a rig that restored "REG on" would start
+  heating in an empty brewery. `POST /api/hardware/session/resume` with
+  `resume`/`fresh` answers the question.
+- **The brew stage rides along too.** Which part of the brew day is running is
+  backend state (`POST /api/hardware/stage` with `next`/`back`/`reset`), for the
+  same reason the timer is: a kiosk that reloads during the mash has to come
+  back on the stage the rig is really on. Each stage entered is timestamped, and
+  those marks are the vertical rules on the temperature chart. They are stamped
+  into the session log, so rolling the log — `initialize`, or starting a brew
+  session — starts the stages over with it.
 
 ## Development
 

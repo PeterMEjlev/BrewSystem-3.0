@@ -82,6 +82,20 @@
   align-content: start;
 }
 
+/* The MLT column: the pot card, then the stage card in the room MLT's missing
+   heater controls leave behind. Both size to their content.
+
+   Grid rather than flex on purpose. PotCard carries `flex: 1`, which a grid
+   parent ignores exactly as .potRow always has; in a flex column it would
+   instead be read as a height with flex-basis 0 and collapse the card. */
+.mltColumn {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 20px;
+  min-width: 300px;
+  align-content: start;
+}
+
 .pumpRow {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

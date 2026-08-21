@@ -151,6 +151,10 @@ async def _temperature_log_loop():
             row = session_logger.log_reading(**_temperature_cache)
             if row is not None:
                 await _broadcast({"type": "log", "row": row})
+            # Piggybacked on the one loop that already runs at this cadence.
+            # Writes only when the record has actually changed, so an
+            # untouched rig costs nothing.
+            _save_session_state()
         except Exception as e:
             logging.getLogger(__name__).error("Temp log error: %s", e)
 
@@ -230,7 +234,22 @@ async def lifespan(app: FastAPI):
     # GPIO init happens exactly once, here — NOT from the frontend. A browser
     # reload mid-brew must never touch relay state.
     utils_rpi.initialize_gpio()
-    session_logger.start_new_session()
+    # Only once the relays are known to be open is it worth asking what brew
+    # this is. A restart mid-brew picks the session back up — the log, the
+    # stage, the timer, the set values — and never picks up what was switched
+    # on. See "Surviving a restart" below.
+    global _pending_resume
+    _pending_resume = _restore_interrupted_session()
+    if _pending_resume is None:
+        _start_fresh_session()
+    else:
+        logging.getLogger(__name__).info(
+            "Picked up the brew that was running %ss ago (%s). Heaters are off "
+            "and regulation is disarmed until the brewer re-arms them.",
+            _pending_resume["awaySeconds"],
+            _pending_resume["stage"] or "not started",
+        )
+        _save_session_state()
     # Only the pot keys hold sensor serials — `ds18b20` also carries the 1-Wire
     # data pin, which is not a device and has no resolution file.
     sensors = read_config()["sensors"]["ds18b20"]
@@ -267,6 +286,12 @@ _timer_state: Dict[str, Any] = {
     "running": False,
     "elapsed": 0.0,      # accumulated seconds while stopped
     "started_at": None,   # time.monotonic() when last started
+    # Wall clock for the same instant. The monotonic one stays the authority
+    # while the process lives — it cannot be dragged about by NTP — but it is
+    # meaningless to the next process, and a boil timer has to survive a
+    # service restart knowing how much of the boil went past. See
+    # _restore_session_state.
+    "epoch_started_at": None,
     "target": 0,          # countdown target in seconds (0 = stopwatch mode)
 }
 
@@ -282,6 +307,7 @@ def _get_timer_seconds() -> int:
         if remaining == 0 and _timer_state["running"]:
             _timer_state["elapsed"] = float(_timer_state["target"])
             _timer_state["started_at"] = None
+            _timer_state["epoch_started_at"] = None
             _timer_state["running"] = False
         return remaining
     return elapsed
@@ -297,6 +323,376 @@ _control_state: Dict[str, Any] = {
         "P2": {"on": False, "speed": 0.0},
     },
 }
+
+
+# ─── Brew stages ──────────────────────────────────────────────────────────────
+#
+# The brew day as the brewer actually walks it. The rig does not drive these —
+# nothing here switches a heater because the stage says "Boil". It records which
+# part of the day is running, which is what turns a temperature curve into a
+# brew log: a line on the chart at the moment the mash went in is worth more
+# than any amount of reading it back out of the shape of the curve afterwards.
+#
+# Backend-owned for the same reason the timer is. A kiosk that reloads during
+# the mash, or the BrewPlanner dashboard mirroring this screen from the other
+# end of the brewery, has to find the rig on the stage it is really on.
+BREW_STAGES = [
+    "Heat water (for mash)",
+    "Mash in",
+    "Mash",
+    "Sparge",
+    "Heat water (for boil)",
+    "Boil",
+    "Hop whirlpool",
+    "Cooling",
+]
+
+# Two positions that are not stages but are real places to be on a brew day:
+# before the first one, and after the last. Keeping them in the same index
+# space means "where are we" is one integer rather than an integer and two
+# flags that can disagree with it.
+STAGE_NOT_STARTED = -1
+STAGE_COMPLETE = len(BREW_STAGES)
+
+_stage_state: Dict[str, Any] = {
+    "index": STAGE_NOT_STARTED,
+    # One entry per stage entered — {"index": int, "ts": epoch_ms} — which is
+    # what the chart draws its vertical lines from. Always a prefix of the
+    # stage list: stepping back drops the mark for the stage being left, so a
+    # mis-tap leaves no line behind on a brew that never reached it.
+    "markers": [],
+}
+
+
+def _brew_stage_report() -> Dict[str, Any]:
+    """The stage state in the shape clients hold it.
+
+    The names ride along so nothing downstream has to keep a copy of the list
+    in step with this one: the panel names the stage ahead from `stages`, and
+    the chart labels each line by looking its marker's index up in the same
+    array. The list never changes, so it diffs to nothing after the opening
+    snapshot and costs a connected client no traffic.
+    """
+    return {
+        "stages": list(BREW_STAGES),
+        "index": _stage_state["index"],
+        "markers": [dict(marker) for marker in _stage_state["markers"]],
+    }
+
+
+def _reset_brew_stage() -> None:
+    """Back to before the first stage.
+
+    Called wherever the session log rolls over — the markers are timestamps
+    into that log, so they are only meaningful for as long as it is.
+    """
+    _stage_state["index"] = STAGE_NOT_STARTED
+    _stage_state["markers"] = []
+
+
+def _step_brew_stage(delta: int) -> None:
+    """Move the brew one stage forward or back, keeping the markers in step."""
+    current = _stage_state["index"]
+    target = max(STAGE_NOT_STARTED, min(STAGE_COMPLETE, current + delta))
+    if target == current:
+        return
+    if target > current:
+        _stage_state["markers"].append({"index": target, "ts": int(time.time() * 1000)})
+    else:
+        # Leaving a stage backwards un-enters it. Dropping the mark is the
+        # point of having a back button at all — otherwise a wrong tap during
+        # the mash would leave a "Sparge" line on the chart forever.
+        _stage_state["markers"] = [
+            marker for marker in _stage_state["markers"] if marker["index"] <= target
+        ]
+    _stage_state["index"] = target
+
+
+# ─── Surviving a restart ──────────────────────────────────────────────────────
+#
+# The rig gets restarted mid-brew: an update deployed from BrewPlanner's button,
+# a service that fell over, the power blinking. Before this, every one of those
+# rolled a fresh session log and put the brew back to before stage one — the
+# curve for the day started again from an empty chart, halfway through the mash.
+#
+# So the parts of a brew that are *records* are written to disk as they change,
+# and on startup an interrupted brew is picked back up and put to the brewer to
+# confirm. What is deliberately NOT restored is the control state: which relay
+# was closed and whether regulation was armed. GPIO comes up LOW and stays that
+# way until somebody presses something, because _regulation_tick turns elements
+# on by itself — a rig that restored "REG on" would start heating, unattended,
+# in an empty brewery. Set values and efficiencies come back as numbers, which
+# is what makes re-arming one press rather than a re-setup, but nothing is
+# switched on to use them.
+_SESSION_STATE_VERSION = 1
+
+# How long an interrupted brew stays resumable. Long enough for a brew day and
+# a serious power cut inside it; short enough that the rig never opens by
+# offering to resume yesterday's mash.
+_RESUME_WINDOW_SECONDS = 6 * 3600
+
+# The BrewPlanner logbook row this rig is brewing against, when the session was
+# started from here. Remembered so a restart knows the brew has a batch behind
+# it, which is one of the signs that there is something worth resuming.
+_active_brew_session: Optional[Dict[str, Any]] = None
+
+# An interrupted brew that was found and adopted at startup, waiting for the
+# brewer to say whether to keep it. An offer, not a state: the readings are
+# already going back into the old log, because that is the answer that loses
+# nothing if nobody is standing at the screen yet.
+_pending_resume: Optional[Dict[str, Any]] = None
+
+# What was last written, so an unchanged record is not rewritten. A rig sitting
+# in the mash changes none of this from one tick to the next, and an atomic
+# write every ten seconds all year is real wear on an SD card for no gain.
+_last_saved_session_state: Optional[Dict[str, Any]] = None
+
+
+def _session_state_path() -> Path:
+    """Beside the session logs, since it is only meaningful with one of them.
+
+    Resolved on each call rather than held as a constant, so it follows the log
+    directory wherever it is pointed.
+    """
+    return session_logger.log_dir / "resume_state.json"
+
+
+def _session_state_blob() -> Dict[str, Any]:
+    """The brew as a record: everything a restart needs and nothing it doesn't.
+
+    Nothing in here changes on its own. A running timer is stored as the wall
+    clock instant it was started plus what it had already accumulated, not as a
+    count, so a brew that is simply proceeding rewrites nothing.
+    """
+    log_path = session_logger.current_path
+    return {
+        "version": _SESSION_STATE_VERSION,
+        "logFile": log_path.name if log_path is not None else None,
+        "brewStage": {
+            "index": _stage_state["index"],
+            "markers": [dict(marker) for marker in _stage_state["markers"]],
+        },
+        "timer": {
+            "running": _timer_state["running"],
+            "target": _timer_state["target"],
+            "elapsed": _timer_state["elapsed"],
+            "epochStartedAt": _timer_state["epoch_started_at"],
+        },
+        "setpoints": {
+            pot: {"sv": state["sv"], "efficiency": state["efficiency"]}
+            for pot, state in _control_state["pots"].items()
+        },
+        "brewSession": _active_brew_session,
+    }
+
+
+def _save_session_state() -> None:
+    """Write the resume record, if there is anything new in it.
+
+    Never raises: a rig that cannot write this file still has a brew to run,
+    and the worst case is that a restart offers nothing to resume.
+    """
+    global _last_saved_session_state
+    blob = _session_state_blob()
+    if blob == _last_saved_session_state:
+        return
+    try:
+        session_logger.log_dir.mkdir(parents=True, exist_ok=True)
+        _write_json_atomic(_session_state_path(), blob)
+    except OSError as e:
+        logging.getLogger(__name__).warning("Could not save the resume record: %s", e)
+        return
+    _last_saved_session_state = blob
+
+
+def _load_session_state() -> Optional[Dict[str, Any]]:
+    """The record left by the last run, if it is one this version understands."""
+    try:
+        blob = json.loads(_session_state_path().read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(blob, dict) or blob.get("version") != _SESSION_STATE_VERSION:
+        return None
+    return blob
+
+
+def _looks_like_a_brew(blob: Dict[str, Any]) -> bool:
+    """Whether this record is worth stopping the brewer to ask about.
+
+    A rig left switched on at the bench logs temperatures all day and has none
+    of these. Asking it to confirm a resume every time it reboots would teach
+    the brewer to dismiss the dialog without reading it, which is exactly the
+    habit that loses the one that matters.
+    """
+    stage = blob.get("brewStage") or {}
+    index = stage.get("index")
+    if isinstance(index, int) and index > STAGE_NOT_STARTED:
+        return True
+    timer = blob.get("timer") or {}
+    if timer.get("running") or (timer.get("target") or 0) > 0:
+        return True
+    return bool(blob.get("brewSession"))
+
+
+def _restore_brew_stage(blob: Dict[str, Any]) -> None:
+    """Put back the stage and its marks, ignoring anything malformed."""
+    stage = blob.get("brewStage") or {}
+    index = stage.get("index")
+    if not isinstance(index, int) or not (STAGE_NOT_STARTED <= index <= STAGE_COMPLETE):
+        return
+    markers = stage.get("markers")
+    if not isinstance(markers, list):
+        return
+    _stage_state["index"] = index
+    _stage_state["markers"] = [
+        {"index": int(marker["index"]), "ts": int(marker["ts"])}
+        for marker in markers
+        if isinstance(marker, dict)
+        and isinstance(marker.get("index"), int)
+        and isinstance(marker.get("ts"), int)
+    ]
+
+
+def _restore_timer(blob: Dict[str, Any]) -> None:
+    """Put the timer back where it would be now, not where it was then.
+
+    A timer that was running keeps running, and the outage counts as time that
+    passed — because it did. The common restart is the deploy button bouncing
+    the service for a few seconds, and the wort does not stop boiling for it. An
+    outage longer than the remaining countdown comes back at zero and sounds,
+    which is the honest answer: that boil ended while the rig was away.
+    """
+    timer = blob.get("timer") or {}
+    target = timer.get("target")
+    elapsed = timer.get("elapsed")
+    _timer_state["target"] = int(target) if isinstance(target, int) else 0
+    _timer_state["elapsed"] = float(elapsed) if isinstance(elapsed, (int, float)) else 0.0
+
+    started = timer.get("epochStartedAt")
+    if timer.get("running") and isinstance(started, (int, float)):
+        _timer_state["elapsed"] += max(0.0, time.time() - float(started))
+        _timer_state["started_at"] = time.monotonic()
+        _timer_state["epoch_started_at"] = time.time()
+        _timer_state["running"] = True
+    else:
+        _timer_state["started_at"] = None
+        _timer_state["epoch_started_at"] = None
+        _timer_state["running"] = False
+
+
+def _restore_setpoints(blob: Dict[str, Any]) -> None:
+    """Bring back the numbers, never the switches. See the note at the top."""
+    for pot, saved in (blob.get("setpoints") or {}).items():
+        if pot not in _control_state["pots"] or not isinstance(saved, dict):
+            continue
+        state = _control_state["pots"][pot]
+        if isinstance(saved.get("sv"), (int, float)):
+            state["sv"] = float(saved["sv"])
+        if isinstance(saved.get("efficiency"), (int, float)):
+            state["efficiency"] = float(saved["efficiency"])
+
+
+def _restore_interrupted_session() -> Optional[Dict[str, Any]]:
+    """Pick up the brew the last run was in the middle of, if there was one.
+
+    Returns what to put to the brewer, or None if there is nothing to resume —
+    in which case the caller starts a fresh session as it always did.
+
+    The log is reopened and appended to straight away rather than waiting for an
+    answer. Nobody is necessarily standing at the screen when the rig comes
+    back, and readings taken in the meantime belong to the brew that was
+    running; if the brewer does say "start fresh", rolling the log then costs
+    nothing but a few minutes of readings filed under the brew they happened
+    during.
+    """
+    global _active_brew_session
+    blob = _load_session_state()
+    if blob is None:
+        return None
+
+    log_file = blob.get("logFile")
+    if not isinstance(log_file, str) or not log_file:
+        return None
+    log_path = session_logger.log_dir / log_file
+    if not log_path.exists():
+        return None
+
+    # When the rig was last alive, to the second: the log loop appends a row
+    # every few seconds, so the file's own mtime is the answer and costs
+    # nothing to read.
+    try:
+        away_seconds = max(0.0, time.time() - log_path.stat().st_mtime)
+    except OSError:
+        return None
+    if away_seconds > _RESUME_WINDOW_SECONDS:
+        return None
+
+    if not _looks_like_a_brew(blob):
+        return None
+    if not session_logger.resume_session(log_path):
+        return None
+
+    _restore_brew_stage(blob)
+    _restore_timer(blob)
+    _restore_setpoints(blob)
+    saved_session = blob.get("brewSession")
+    _active_brew_session = saved_session if isinstance(saved_session, dict) else None
+
+    index = _stage_state["index"]
+    return {
+        "awaySeconds": int(away_seconds),
+        "stage": BREW_STAGES[index] if 0 <= index < len(BREW_STAGES) else None,
+        "stageIndex": index,
+        "loggedRows": len(session_logger.get_history()),
+        "brewSession": _active_brew_session,
+    }
+
+
+def _session_resume_report() -> Dict[str, Any]:
+    """The offer, for the screen that has to make it.
+
+    Always the same keys, nulled out when there is nothing pending. The diff
+    that feeds the sockets only reports keys the new state *has* — a section
+    that changed shape would leave the fields of a settled offer sitting in
+    every connected client for the rest of the session.
+    """
+    if _pending_resume is None:
+        return {
+            "pending": False,
+            "awaySeconds": None,
+            "stage": None,
+            "stageIndex": None,
+            "loggedRows": None,
+            "brewSession": None,
+        }
+    return {"pending": True, **_pending_resume}
+
+
+def _reset_timer() -> None:
+    """Stopwatch at zero, no target — what a new session starts with."""
+    _timer_state.update({
+        "running": False,
+        "elapsed": 0.0,
+        "started_at": None,
+        "epoch_started_at": None,
+        "target": 0,
+    })
+
+
+def _start_fresh_session() -> None:
+    """Roll the log and put the brew back to the beginning.
+
+    The one place that says what "a new session" means, so the three ways of
+    asking for one — a launch with nothing to resume, `initialize`, and starting
+    a batch from the rig — cannot drift apart on the answer.
+    """
+    global _active_brew_session, _pending_resume
+    session_logger.start_new_session()
+    _reset_brew_stage()
+    _reset_timer()
+    _active_brew_session = None
+    _pending_resume = None
+    _save_session_state()
 
 
 class AutoEfficiencyStep(BaseModel):
@@ -498,39 +894,44 @@ def read_config() -> Dict[str, Any]:
     return _config_cache
 
 
-def write_config_atomic(data: Dict[str, Any]) -> None:
-    """Write configuration to JSON file atomically and invalidate the cache"""
-    global _config_cache
-    # Create a temporary file in the same directory as the config file
-    config_dir = CONFIG_FILE.parent
+def _write_json_atomic(path: Path, data: Dict[str, Any]) -> None:
+    """Write JSON so that a power cut leaves either the old file or the new one.
 
-    # Write to temporary file first
+    Used for the two files this rig cannot afford to find half-written: the
+    config that holds its wiring, and the record that lets a brew survive a
+    restart. Both are written while a brew day is in progress, which is
+    precisely when the power is most likely to go.
+    """
     with tempfile.NamedTemporaryFile(
         mode='w',
-        dir=config_dir,
+        dir=path.parent,
         delete=False,
         suffix='.tmp'
     ) as tmp_file:
         json.dump(data, tmp_file, indent=2)
         # os.replace is atomic against the filesystem, but only over a file the
         # OS has actually written. Without this the rename can land while the
-        # contents are still in the page cache, so a power cut leaves a config
-        # that the filesystem considers fine and json.load does not — on the
-        # one file that holds this rig's wiring.
+        # contents are still in the page cache, so a power cut leaves a file
+        # that the filesystem considers fine and json.load does not.
         tmp_file.flush()
         os.fsync(tmp_file.fileno())
         tmp_path = tmp_file.name
 
-    # Atomically replace the old config file with the new one
     try:
-        os.replace(tmp_path, CONFIG_FILE)
+        os.replace(tmp_path, path)
     except OSError:
-        # Don't leave a stray tmp beside the config it failed to become.
+        # Don't leave a stray tmp beside the file it failed to become.
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
         raise
+
+
+def write_config_atomic(data: Dict[str, Any]) -> None:
+    """Write configuration to JSON file atomically and invalidate the cache"""
+    global _config_cache
+    _write_json_atomic(CONFIG_FILE, data)
     _config_cache = data
 
 
@@ -566,6 +967,14 @@ async def update_settings(settings: Settings) -> Dict[str, str]:
 
 
 # ─── Hardware endpoints ────────────────────────────────────────────────────────
+
+class StageActionRequest(BaseModel):
+    action: str  # "next", "back", "reset"
+
+
+class SessionResumeRequest(BaseModel):
+    action: str  # "resume", "fresh"
+
 
 class TimerActionRequest(BaseModel):
     action: str  # "start", "stop", "reset", "set"
@@ -975,6 +1384,8 @@ def _state_snapshot() -> Dict[str, Any]:
             "seconds": _get_timer_seconds(),
             "target": _timer_state["target"],
         },
+        "brewStage": _brew_stage_report(),
+        "sessionResume": _session_resume_report(),
         "heatFaults": _heat_fault_report(),
         "systemWarnings": _system_warnings(),
     }
@@ -1190,7 +1601,7 @@ async def initialize_hardware() -> Dict[str, str]:
         pump["speed"] = 0.0
     for pot_name in _heat_watch:
         _reset_heat_watch(pot_name)
-    session_logger.start_new_session()
+    _start_fresh_session()
     _schedule_broadcast()
     # The session log just started over, so every row a chart is holding
     # belongs to a brew that is finished. Say so — a push-fed chart has no
@@ -1265,6 +1676,11 @@ async def set_pot_sv(pot: str, body: PotSvRequest) -> Dict[str, str]:
     if pot not in ("BK", "HLT"):
         raise HTTPException(status_code=400, detail=f"Unknown pot: {pot}")
     _control_state["pots"][pot]["sv"] = body.value
+    # Deliberate, rare, and the number the brewer most expects to find still
+    # set after a restart — worth writing through rather than waiting for the
+    # log loop's catch-all. Efficiency is not: the regulator rewrites it every
+    # second, so it rides the periodic save instead.
+    _save_session_state()
     _schedule_broadcast()
     return {"status": "ok"}
 
@@ -1287,16 +1703,19 @@ async def control_timer(body: TimerActionRequest) -> Dict[str, Any]:
     if action == "start":
         if not _timer_state["running"]:
             _timer_state["started_at"] = time.monotonic()
+            _timer_state["epoch_started_at"] = time.time()
             _timer_state["running"] = True
     elif action == "stop":
         if _timer_state["running"]:
             _timer_state["elapsed"] += time.monotonic() - _timer_state["started_at"]
             _timer_state["started_at"] = None
+            _timer_state["epoch_started_at"] = None
             _timer_state["running"] = False
     elif action == "reset":
         _timer_state["running"] = False
         _timer_state["elapsed"] = 0.0
         _timer_state["started_at"] = None
+        _timer_state["epoch_started_at"] = None
         _timer_state["target"] = 0
     elif action == "set":
         if body.seconds is None or body.seconds < 0:
@@ -1305,10 +1724,75 @@ async def control_timer(body: TimerActionRequest) -> Dict[str, Any]:
         _timer_state["running"] = False
         _timer_state["elapsed"] = 0.0
         _timer_state["started_at"] = None
+        _timer_state["epoch_started_at"] = None
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use start, stop, reset, or set.")
+    _save_session_state()
     _schedule_broadcast()
     return {"status": "ok", "timer": {"running": _timer_state["running"], "seconds": _get_timer_seconds(), "target": _timer_state["target"]}}
+
+
+@app.post("/api/hardware/stage")
+async def control_brew_stage(body: StageActionRequest) -> Dict[str, Any]:
+    """Step the brew stage forward or back, or put it back before the start.
+
+    Only ever one step at a time — the panel offers a button for the stage
+    ahead and one for the stage behind, and nothing else should be able to
+    invent a jump the brewer did not make. The move is silently clamped at both
+    ends rather than refused: pressing "back" on a brew that has not started is
+    a no-op, not an error worth a red banner on a brewing screen.
+    """
+    action = body.action.lower()
+    if action == "next":
+        _step_brew_stage(1)
+    elif action == "back":
+        _step_brew_stage(-1)
+    elif action == "reset":
+        _reset_brew_stage()
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown action: {action}. Use next, back, or reset.",
+        )
+    _save_session_state()
+    _schedule_broadcast()
+    return {"status": "ok", "brewStage": _brew_stage_report()}
+
+
+@app.post("/api/hardware/session/resume")
+async def resolve_session_resume(body: SessionResumeRequest) -> Dict[str, Any]:
+    """Answer the offer a restart left standing: keep this brew, or start over.
+
+    "resume" only has to put the question away — the log was reopened and the
+    stage, timer and set values were restored at startup, because that is what
+    loses nothing while nobody is at the screen. "fresh" is the one that does
+    work, and it is the destructive answer: it rolls the log, so the chart is
+    told its rows belong to a brew that is finished.
+
+    Answering twice is not an error. Two screens can be showing this dialog —
+    the rig and BrewPlanner's mirror — and whichever is tapped second should
+    simply find the question already settled.
+    """
+    global _pending_resume
+    action = body.action.lower()
+    if action not in ("resume", "fresh"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown action: {action}. Use resume or fresh.",
+        )
+    if _pending_resume is None:
+        return {"status": "ok", "resolved": False}
+
+    if action == "fresh":
+        _start_fresh_session()
+        _schedule_broadcast()
+        # Every row the charts hold belongs to the brew just abandoned.
+        await _broadcast({"type": "session_reset"})
+    else:
+        _pending_resume = None
+        _save_session_state()
+        _schedule_broadcast()
+    return {"status": "ok", "resolved": True}
 
 
 @app.get("/api/hardware/state")
@@ -1469,7 +1953,17 @@ async def start_brew_session(body: StartBrewSessionRequest) -> Dict[str, Any]:
         # 502: this rig is fine, the machine it had to ask is not.
         raise HTTPException(status_code=502, detail=str(e))
 
-    session_logger.start_new_session()
+    global _active_brew_session
+    _start_fresh_session()
+    # Remembered so a restart mid-brew knows this day has a logbook row behind
+    # it, and can say which beer it is offering to resume.
+    _active_brew_session = {
+        "brewSessionId": session.get("id") if isinstance(session, dict) else None,
+        "recipeId": body.recipeId,
+        "name": (session.get("recipe") or {}).get("name", "") if isinstance(session, dict) else "",
+    }
+    _save_session_state()
+    _schedule_broadcast()
     await _broadcast({"type": "session_reset"})
     return {"status": "ok", "brewSession": session}
 

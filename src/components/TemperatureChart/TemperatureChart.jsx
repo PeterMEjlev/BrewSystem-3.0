@@ -4,6 +4,7 @@ import 'uplot/dist/uPlot.min.css';
 import { brewSystem } from '../../utils/mockHardware';
 import { hardwareApi } from '../../utils/hardwareApi';
 import { subscribeLogEvents } from '../../utils/liveState';
+import { subscribeBrewStage, getBrewStage } from '../../utils/brewStage';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import styles from './TemperatureChart.module.css';
@@ -75,6 +76,76 @@ async function topUpFromServer() {
   }
 }
 
+// Vertical rules at the moment each brew stage began, drawn straight onto the
+// uPlot canvas rather than as positioned DOM: they have to survive pan, zoom
+// and resize, and the canvas already knows how to map a timestamp to an x.
+//
+// Everything here is in canvas pixels (u.bbox, valToPos's third argument), so
+// the sizes are scaled by pxRatio — on the Pi's display a hairline drawn in CSS
+// pixels would come out sub-pixel and disappear.
+function drawStageMarkers(u, { markers, stages, show }) {
+  if (!show || !markers || markers.length === 0) return;
+
+  const { ctx } = u;
+  const { left, top, width, height } = u.bbox;
+  const ratio = uPlot.pxRatio || window.devicePixelRatio || 1;
+  const min = u.scales.x.min;
+  const max = u.scales.x.max;
+  // Nothing to draw against before the plot has been sized or given a scale.
+  if (min == null || max == null || !width || !height) return;
+
+  const rootStyle = getComputedStyle(document.documentElement);
+  const color = rootStyle.getPropertyValue('--color-accent-orange').trim() || '#f97316';
+  const halo = rootStyle.getPropertyValue('--color-bg-secondary').trim() || '#1e293b';
+
+  ctx.save();
+  // Clip to the plot area so a label near the right edge cannot spill over the
+  // axis and out of the chart.
+  ctx.beginPath();
+  ctx.rect(left, top, width, height);
+  ctx.clip();
+  ctx.font = `${13 * ratio}px ${rootStyle.getPropertyValue('--font-family').trim() || 'sans-serif'}`;
+
+  for (const marker of markers) {
+    const seconds = marker.ts / 1000;
+    if (seconds < min || seconds > max) continue;
+    const x = Math.round(u.valToPos(seconds, 'x', true));
+
+    ctx.setLineDash([6 * ratio, 5 * ratio]);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 * ratio;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, top + height);
+    ctx.stroke();
+
+    // Reading top-to-bottom beside the line: eight of these across a brew day
+    // would collide end to end if they were laid out horizontally, and the
+    // curves themselves live lower down the plot than the labels do.
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.translate(x + 7 * ratio, top + 8 * ratio);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = 'left';
+    // Explicit, and alphabetic on purpose: uPlot leaves its own text settings
+    // on this context, and after the rotation the baseline is the edge nearest
+    // the rule — so this is what keeps the label off the line it labels.
+    ctx.textBaseline = 'alphabetic';
+    // A halo in the panel colour, so a label crossing a temperature trace stays
+    // readable without a box that would hide the trace behind it.
+    ctx.lineWidth = 3 * ratio;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = halo;
+    const label = stages[marker.index] ?? 'Brew complete';
+    ctx.strokeText(label, 0, 0);
+    ctx.fillStyle = color;
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
 function getTouchDistance(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
@@ -85,16 +156,21 @@ function TemperatureChart() {
   const { theme } = useTheme();
   const { settings } = useSettings();
   const data = useSyncExternalStore(subscribeStore, getStoreSnapshot);
+  const brewStage = useSyncExternalStore(subscribeBrewStage, getBrewStage);
   const [visibility, setVisibility] = useState({
     BK: true,
     MLT: true,
     HLT: true,
   });
+  const [showStages, setShowStages] = useState(true);
   const [windowMinutes, setWindowMinutes] = useState(WINDOW_MAX);
   const [zoomDomain, setZoomDomain] = useState(null); // { start, end } ms timestamps or null
   const [isPanning, setIsPanning] = useState(false);
   const [tooltipState, setTooltipState] = useState(null); // { point, x, y }
   const chartContainerRef = useRef(null);
+  // The plot is built once on mount, so its draw hook cannot close over state.
+  // It reads this instead, and the effect below repaints when it changes.
+  const stageDrawRef = useRef({ markers: [], stages: [], show: true });
   const plotElRef = useRef(null); // div uPlot renders into
   const plotRef = useRef(null); // uPlot instance
   const panRef = useRef(null); // { startX, domainStart, domainEnd, chartWidth }
@@ -228,6 +304,10 @@ function TemperatureChart() {
       height: Math.max(el.clientHeight, 50),
       legend: { show: false },
       cursor: { show: false },
+      hooks: {
+        // After the series, so the rules and their labels sit on top of the traces.
+        draw: [(u) => drawStageMarkers(u, stageDrawRef.current)],
+      },
       scales: {
         x: { time: true },
         y: { range: [0, 100] },
@@ -281,6 +361,18 @@ function TemperatureChart() {
   useEffect(() => {
     plotRef.current?.redraw(false);
   }, [theme.vesselBK, theme.vesselMLT, theme.vesselHLT]);
+
+  // Same for the stage rules: hand the draw hook the current marks, then ask
+  // for a repaint. `false` skips rebuilding the series paths — the data has
+  // not changed, only what is drawn over it.
+  useEffect(() => {
+    stageDrawRef.current = {
+      markers: brewStage.markers,
+      stages: brewStage.stages,
+      show: showStages,
+    };
+    plotRef.current?.redraw(false);
+  }, [brewStage, showStages]);
 
   // Push data + x-scale into the plot
   useEffect(() => {
@@ -578,6 +670,12 @@ function TemperatureChart() {
             onClick={() => toggleVisibility('HLT')}
           >
             HLT
+          </button>
+          <button
+            className={`${styles.toggleBtn} ${showStages ? styles.stages : styles.off}`}
+            onClick={() => setShowStages((prev) => !prev)}
+          >
+            Stages
           </button>
           </div>
         </div>

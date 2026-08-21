@@ -9,6 +9,7 @@ import { DEFAULT_BK_ELEMENT_WATTS, DEFAULT_HLT_ELEMENT_WATTS } from '../../utils
 import PotCard from './PotCard';
 import PumpCard from './PumpCard';
 import BrewTimer from './BrewTimer';
+import BrewStageCard from './BrewStageCard';
 import styles from './BrewingPanel.module.css';
 
 // How long after a command the pushed control state is ignored. A diff can
@@ -348,16 +349,22 @@ function BrewingPanel() {
           efficiencyCap={bkCap}
           onUpdate={onUpdateBK}
         />
-        <PotCard
-          name="MLT"
-          type="MLT"
-          potState={states.pots.MLT}
-          regulationConfig={bkRegConfig}
-          effectiveEfficiency={0}
-          potMaxWatts={0}
-          efficiencyCap={100}
-          onUpdate={onUpdateMLT}
-        />
+        {/* MLT carries no heater controls, so its column is the short one —
+            which is the room the stage card takes, rather than a new row that
+            would push the pumps and the timer down. */}
+        <div className={styles.mltColumn}>
+          <PotCard
+            name="MLT"
+            type="MLT"
+            potState={states.pots.MLT}
+            regulationConfig={bkRegConfig}
+            effectiveEfficiency={0}
+            potMaxWatts={0}
+            efficiencyCap={100}
+            onUpdate={onUpdateMLT}
+          />
+          <BrewStageCard />
+        </div>
         <PotCard
           name="HLT"
           type="HLT"

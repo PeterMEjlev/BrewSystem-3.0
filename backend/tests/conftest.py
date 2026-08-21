@@ -97,7 +97,14 @@ def app_module(tmp_path, monkeypatch, gpio):
         pot.update({"heaterOn": False, "sv": 100.0, "efficiency": 0, "regulationEnabled": False})
     for pump in main._control_state["pumps"].values():
         pump.update({"on": False, "speed": 0.0})
-    main._timer_state.update({"running": False, "elapsed": 0.0, "started_at": None, "target": 0})
+    main._reset_timer()
+    main._stage_state.update({"index": main.STAGE_NOT_STARTED, "markers": []})
+    # The resume record is disk state, so it has to be pointed at the throwaway
+    # log directory above and the in-process memory of it cleared — otherwise
+    # one test's interrupted brew is offered to the next one.
+    monkeypatch.setattr(main, "_active_brew_session", None)
+    monkeypatch.setattr(main, "_pending_resume", None)
+    monkeypatch.setattr(main, "_last_saved_session_state", None)
     main._temperature_cache.update({"bk": None, "mlt": None, "hlt": None})
     for pot in main._heat_watch:
         main._heat_watch[pot].update({"since": None, "baseline": None, "faulted_at": None})

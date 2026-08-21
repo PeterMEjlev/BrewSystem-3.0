@@ -1,0 +1,134 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 620px;
+  padding: 28px 32px 24px;
+  background: var(--color-bg-secondary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-hover);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+}
+
+.summary {
+  margin: 22px 0 0;
+  padding: 16px 20px;
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-lg);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 6px 0;
+}
+
+.key {
+  flex: 0 0 110px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-dark);
+}
+
+.value {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* Amber, and the same amber as the heat-fault banner on the brewing screen:
+   both mean "go and look at the rig", and neither is an error. */
+.safetyNote {
+  margin: 18px 0 0;
+  padding: 12px 16px;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-md);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.freshBtn,
+.resumeBtn {
+  padding: 16px 28px;
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  touch-action: manipulation;
+}
+
+/* Quiet on purpose: this is the answer that throws a brew day's chart away. */
+.freshBtn {
+  color: var(--color-text-secondary);
+  background: none;
+  border: 2px solid var(--color-border);
+}
+
+.freshBtn:hover:not(:disabled) {
+  background: rgba(100, 116, 139, 0.15);
+}
+
+.resumeBtn {
+  color: #fff;
+  background: var(--gradient-warm);
+  border: none;
+}
+
+.resumeBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.freshBtn:active:not(:disabled),
+.resumeBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.freshBtn:disabled,
+.resumeBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.freshWarning {
+  margin: 12px 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dark);
+  text-align: right;
+}

@@ -124,6 +124,14 @@
   color: white;
 }
 
+/* Not a vessel, so deliberately not a vessel colour — the stage rules are
+   drawn in the same orange on the canvas. */
+.toggleBtn.stages {
+  background: var(--color-accent-orange);
+  border-color: var(--color-accent-orange);
+  color: white;
+}
+
 .toggleBtn.off {
   background: transparent;
   border-color: var(--color-border-light);

@@ -33,7 +33,16 @@ function BrewTimer({ timerState, isProduction }) {
 
   const canAdjust = !isRunning && displaySeconds === target;
 
-  // Sync from backend poll
+  // Sync from backend poll — including whether the timer is sitting at zero,
+  // i.e. the "Timer Complete" state that sounds the alarm below.
+  //
+  // The backend owns one timer, but this screen is no longer the only thing
+  // looking at it: the BrewPlanner dashboard mirrors the same card. So the
+  // finished flag has to be *mirrored* rather than latched. Setting it on a
+  // finished poll and only ever clearing it from a tap on this screen meant a
+  // dismissal from the dashboard — which resets the timer, target and all —
+  // left the rig alarming at an empty brewery until somebody walked over and
+  // tapped it here as well.
   useEffect(() => {
     if (!isProduction || !timerState) return;
     if (localActionRef.current) {
@@ -43,6 +52,9 @@ function BrewTimer({ timerState, isProduction }) {
     setDisplaySeconds(timerState.seconds);
     setIsRunning(timerState.running);
     setTarget(timerState.target ?? 0);
+    setIsFinished(
+      timerState.target > 0 && timerState.seconds === 0 && !timerState.running
+    );
   }, [isProduction, timerState]);
 
   // Local tick — keeps display updating every second in both dev and production.
@@ -85,14 +97,6 @@ function BrewTimer({ timerState, isProduction }) {
       setDisplaySeconds(elapsed);
     }
   }, [elapsed, target, isProduction, isRunning]);
-
-  // Detect finished state from backend poll
-  useEffect(() => {
-    if (!isProduction || !timerState) return;
-    if (timerState.target > 0 && timerState.seconds === 0 && !timerState.running) {
-      setIsFinished(true);
-    }
-  }, [isProduction, timerState]);
 
   // Sound the alarm, and tell Bruce, when the timer finishes.
   //

@@ -1,5 +1,11 @@
 
+- Investigate why the temp sensors sometimes show "--" instead of the actual value
 
+- make tools page more touch friendly (add value up /down buttons). the current version is best with keyboard. whats the best options here?
+
+- Make the dropdown selection when starting a new brew session more touch screen friendly
+
+- Rename "Home" page to "Front Page"
 
 ## Change hostname on pi to "Brewsystem"
 

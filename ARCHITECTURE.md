@@ -17,6 +17,10 @@ App (Main Shell)
 │   │   ├── PotCard (MLT)
 │   │   │   └── PV Display (Large, Read-only)
 │   │   │
+│   │   ├── BrewStageCard (in the room MLT's missing controls leave)
+│   │   │   ├── Current Stage + Time Entered
+│   │   │   └── Back / Next Buttons (Next names the stage ahead)
+│   │   │
 │   │   ├── PotCard (HLT)
 │   │   │   ├── On/Off Toggle
 │   │   │   ├── Regulation Toggle
@@ -40,13 +44,18 @@ App (Main Shell)
 │   │       └── Speed Slider
 │   │
 │   ├── TemperatureChart
-│   │   ├── Toggle Buttons (BK/MLT/HLT)
+│   │   ├── Toggle Buttons (BK/MLT/HLT/Stages)
+│   │   ├── Brew Stage Rules (canvas draw hook, one per stage entered)
 │   │   └── Recharts LineChart
 │   │       ├── XAxis (Time)
 │   │       ├── YAxis (Temperature)
 │   │       ├── BK Line (Conditional)
 │   │       ├── MLT Line (Conditional)
 │   │       └── HLT Line (Conditional)
+│   │
+│   ├── ResumeSessionDialog (only after a restart mid-brew)
+│   │   ├── What Was Running (beer, stage, timer, readings)
+│   │   └── Resume / Start Fresh
 │   │
 │   └── Settings
 │       ├── Hardware Configuration Section

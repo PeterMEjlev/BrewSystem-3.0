@@ -55,8 +55,20 @@ def test_the_websocket_hands_out_a_full_snapshot(client):
         message = ws.receive_json()
     assert message["type"] == "snapshot"
     assert set(message["state"]) == {
-        "temperatures", "controlState", "timer", "heatFaults", "systemWarnings",
+        "temperatures", "controlState", "timer", "brewStage", "sessionResume",
+        "heatFaults", "systemWarnings",
     }
+
+
+def test_the_stage_endpoint_reaches_the_state_endpoint(client):
+    assert client.post("/api/hardware/stage", json={"action": "next"}).status_code == 200
+    state = client.get("/api/hardware/state").json()
+    assert state["brewStage"]["index"] == 0
+    assert len(state["brewStage"]["markers"]) == 1
+
+
+def test_an_unknown_stage_action_is_refused(client):
+    assert client.post("/api/hardware/stage", json={"action": "skip"}).status_code == 400
 
 
 def test_a_write_reaches_the_state_endpoint(client):
@@ -138,3 +150,67 @@ def test_timer_roundtrips_through_the_api(client):
     assert body["timer"]["target"] == 90
     stopped = client.post("/api/hardware/timer", json={"action": "stop"}).json()
     assert stopped["timer"]["running"] is False
+
+
+# ── Restarting mid-brew ───────────────────────────────────────────────────────
+#
+# The unit tests drive the restore directly. These go through the real thing:
+# the app's own lifespan, twice, with the in-process memory of the first run
+# wiped in between the way a new interpreter would have it.
+
+
+def _forget_everything_but_the_disk(app_module):
+    """What a fresh process starts with. The disk is deliberately left alone —
+    it is the only thing a restart has to go on."""
+    app_module._stage_state.update({"index": app_module.STAGE_NOT_STARTED, "markers": []})
+    app_module._reset_timer()
+    app_module._active_brew_session = None
+    app_module._pending_resume = None
+    app_module._last_saved_session_state = None
+    app_module.session_logger._log_path = None
+    app_module.session_logger._history = []
+
+
+def test_a_brew_survives_a_restart_of_the_whole_app(app_module, gpio, monkeypatch):
+    monkeypatch.setattr(utils_rpi, "read_all_temperatures", lambda sensors: dict(RAW))
+
+    with TestClient(app_module.app) as c:
+        for _ in range(3):
+            c.post("/api/hardware/stage", json={"action": "next"})
+        c.post("/api/hardware/timer", json={"action": "set", "seconds": 3600})
+        c.post("/api/hardware/timer", json={"action": "start"})
+        c.post("/api/hardware/pot/BK/sv", json={"value": 67.5})
+        log_file = app_module.session_logger.current_path
+
+    _forget_everything_but_the_disk(app_module)
+
+    with TestClient(app_module.app) as c:
+        state = c.get("/api/hardware/state").json()
+        assert state["sessionResume"]["pending"] is True
+        assert state["sessionResume"]["stage"] == app_module.BREW_STAGES[2]
+        assert state["brewStage"]["index"] == 2
+        assert state["timer"]["running"] is True
+        assert state["controlState"]["pots"]["BK"]["sv"] == 67.5
+        # The log it was writing, not a new one.
+        assert app_module.session_logger.current_path == log_file
+        # And nothing is heating on the way back in.
+        assert state["controlState"]["pots"]["BK"]["heaterOn"] is False
+        assert state["controlState"]["pots"]["BK"]["regulationEnabled"] is False
+
+        resolved = c.post("/api/hardware/session/resume", json={"action": "resume"}).json()
+        assert resolved["resolved"] is True
+        assert c.get("/api/hardware/state").json()["sessionResume"]["pending"] is False
+
+
+def test_a_restart_with_nothing_running_asks_nothing(app_module, gpio, monkeypatch):
+    """The common case: the rig is rebooted between brews."""
+    monkeypatch.setattr(utils_rpi, "read_all_temperatures", lambda sensors: dict(RAW))
+
+    with TestClient(app_module.app) as c:
+        first_log = app_module.session_logger.current_path
+
+    _forget_everything_but_the_disk(app_module)
+
+    with TestClient(app_module.app) as c:
+        assert c.get("/api/hardware/state").json()["sessionResume"]["pending"] is False
+        assert app_module.session_logger.current_path != first_log
