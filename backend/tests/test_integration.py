@@ -55,8 +55,8 @@ def test_the_websocket_hands_out_a_full_snapshot(client):
         message = ws.receive_json()
     assert message["type"] == "snapshot"
     assert set(message["state"]) == {
-        "temperatures", "controlState", "timer", "brewStage", "sessionResume",
-        "heatFaults", "systemWarnings",
+        "temperatures", "sensorHeld", "controlState", "timer", "brewStage",
+        "sessionResume", "heatFaults", "systemWarnings",
     }
 
 
@@ -89,7 +89,9 @@ def test_the_pump_endpoints_actually_apply(client, gpio):
     client.post("/api/hardware/pump/P1/power", json={"on": True})
     client.post("/api/hardware/pump/P1/speed", json={"value": 70})
     state = client.get("/api/hardware/state").json()
-    assert state["controlState"]["pumps"]["P1"] == {"on": True, "speed": 70}
+    assert state["controlState"]["pumps"]["P1"] == {
+        "on": True, "speed": 70, "lastSpeed": 70,
+    }
     assert gpio.is_on(27), "the P1 relay was never closed"
     assert gpio.duty[5] == 70
 

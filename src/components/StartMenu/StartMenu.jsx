@@ -72,9 +72,9 @@ function StartMenu({ onStartSession, onSkipSession }) {
         </header>
 
         {/* Only when there is one, so the ordinary menu stays two clean choices.
-            Reached by tapping Home mid-brew, where the launch check no longer
-            applies — starting a second session would have BrewPlanner log this
-            rig's temperatures against both. */}
+            Reached by tapping Front Page mid-brew, where the launch check no
+            longer applies — starting a second session would have BrewPlanner
+            log this rig's temperatures against both. */}
         {activeBrew && (
           <p className={styles.activeBrew}>
             <span className={styles.activeDot} />

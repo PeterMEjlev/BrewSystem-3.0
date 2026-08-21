@@ -38,6 +38,9 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressPollingFilter())
 
 # Temperature cache — updated by background task, served instantly from the API.
 # None means "no valid reading" (sensor missing/failed) — never a temperature.
+# A single dropped read does not land here as None: it is bridged with the last
+# good value first, and only a sensor still failing after _SENSOR_HOLD_SECONDS
+# publishes None. See _hold_through_dropouts.
 _temperature_cache: Dict[str, Optional[float]] = {"bk": None, "mlt": None, "hlt": None}
 
 # Monotonic timestamp of the last completed sensor sweep — the watchdog uses
@@ -78,6 +81,88 @@ def _apply_calibration(temps: Dict[str, Optional[float]], config: Dict[str, Any]
     return corrected
 
 
+# How long a sensor's last good reading stands in for a failed one.
+#
+# A DS18B20 on a shared bus in a brewery drops the occasional transaction: a
+# CRC that comes back "NO", an EIO from a busy master, a device that blinks out
+# of sysfs for one sweep. Those are single-sweep events, and treating one as a
+# dead sensor put "--" on the panel and — for a regulating pot — dropped the
+# element (see _regulation_tick). Neither is warranted by one unconfirmed
+# sample.
+#
+# So a failed read reuses the last good value for this long before the sensor
+# is called failed. Comfortably inside _SENSOR_STALE_SECONDS, so the watchdog
+# stays the outer bound, and far short of the 120 s heat-fault window, so a
+# held (and therefore flat) reading cannot age into a false "not heating".
+_SENSOR_HOLD_SECONDS = 3.0
+
+# Per sensor: the last reading that actually came off the bus, when it did
+# (monotonic), and where the sensor stands — "ok" (what is published came off
+# the bus this sweep), "held" (it is the last good value, standing in), or
+# "failed" (the hold has run out and None is published).
+_last_good_reading: Dict[str, Optional[float]] = {"bk": None, "mlt": None, "hlt": None}
+_last_good_at: Dict[str, float] = {"bk": 0.0, "mlt": 0.0, "hlt": 0.0}
+_sensor_status: Dict[str, str] = {"bk": "ok", "mlt": "ok", "hlt": "ok"}
+
+
+def _hold_through_dropouts(
+    temps: Dict[str, Optional[float]], now: Optional[float] = None
+) -> Dict[str, Optional[float]]:
+    """Bridge single-sweep sensor dropouts with the last good reading.
+
+    Takes calibrated readings and returns what to publish: the fresh value when
+    there is one, the last good value while it is younger than
+    _SENSOR_HOLD_SECONDS, and None once it is not — at which point the sensor
+    has genuinely failed and every existing rule applies to it unchanged.
+
+    Bounded by wall time rather than a count of sweeps, so a loop running slow
+    (a retrying bus, a busy Pi) cannot stretch the hold past what the safety
+    rules below assume.
+
+    A held value is marked in _sensor_status so nothing downstream mistakes it
+    for a fresh one. It is still handed to regulation deliberately: three
+    seconds of a 100 L kettle is nothing, and cutting an element over a single
+    bad CRC is the fault this exists to stop. A sensor that has never read
+    holds nothing — None stays None, rather than inventing a temperature.
+    """
+    logger = logging.getLogger(__name__)
+    now = time.monotonic() if now is None else now
+    published: Dict[str, Optional[float]] = {}
+
+    for pot, value in temps.items():
+        previous = _sensor_status.get(pot, "ok")
+
+        if value is not None:
+            _last_good_reading[pot] = value
+            _last_good_at[pot] = now
+            _sensor_status[pot] = "ok"
+            published[pot] = value
+            if previous != "ok":
+                logger.info("%s sensor reading again (%.1f°C)", pot.upper(), value)
+            continue
+
+        held = _last_good_reading.get(pot)
+        if held is not None and (now - _last_good_at.get(pot, 0.0)) <= _SENSOR_HOLD_SECONDS:
+            _sensor_status[pot] = "held"
+            published[pot] = held
+            if previous == "ok":
+                logger.warning(
+                    "%s sensor read failed — holding %.1f°C for up to %.0fs",
+                    pot.upper(), held, _SENSOR_HOLD_SECONDS,
+                )
+            continue
+
+        _sensor_status[pot] = "failed"
+        published[pot] = None
+        if previous != "failed":
+            logger.error(
+                "%s sensor has not read for over %.0fs — reporting no reading",
+                pot.upper(), _SENSOR_HOLD_SECONDS,
+            )
+
+    return published
+
+
 async def _temperature_read_loop():
     """Background task: continuously read all sensors and update the in-memory cache,
     then run one regulation pass so heater control lives here — not in the browser.
@@ -95,7 +180,9 @@ async def _temperature_read_loop():
             config = read_config()
             sensors = config["sensors"]["ds18b20"]
             temps = await asyncio.to_thread(utils_rpi.read_all_temperatures, sensors)
-            _temperature_cache.update(_apply_calibration(temps, config))
+            _temperature_cache.update(
+                _hold_through_dropouts(_apply_calibration(temps, config))
+            )
             _last_read_time = time.monotonic()
             _regulation_tick(config)
             _heat_fault_tick(config)
@@ -312,6 +399,10 @@ def _get_timer_seconds() -> int:
         return remaining
     return elapsed
 
+# Where a pump starts the first time it is switched on, before the brewer has
+# chosen anything for it to remember.
+_DEFAULT_PUMP_SPEED = 50.0
+
 # Shared control state — the single source of truth for all connected clients
 _control_state: Dict[str, Any] = {
     "pots": {
@@ -319,8 +410,14 @@ _control_state: Dict[str, Any] = {
         "HLT": {"heaterOn": False, "sv": 55.0,  "efficiency": 0, "regulationEnabled": False},
     },
     "pumps": {
-        "P1": {"on": False, "speed": 0.0},
-        "P2": {"on": False, "speed": 0.0},
+        # `speed` is the duty being driven right now, and goes to 0 whenever the
+        # pump is switched off. `lastSpeed` is the speed the brewer chose, kept
+        # so that switching a pump back on returns it to where it was rather
+        # than to a number nobody picked. Held here rather than in a client
+        # because both the touchscreen and BrewPlanner drive these pumps, and
+        # they should agree on what "where it was" means.
+        "P1": {"on": False, "speed": 0.0, "lastSpeed": _DEFAULT_PUMP_SPEED},
+        "P2": {"on": False, "speed": 0.0, "lastSpeed": _DEFAULT_PUMP_SPEED},
     },
 }
 
@@ -645,6 +742,15 @@ def _restore_interrupted_session() -> Optional[Dict[str, Any]]:
         "stageIndex": index,
         "loggedRows": len(session_logger.get_history()),
         "brewSession": _active_brew_session,
+        # The timer as it stood the moment the rig came back — a description of
+        # what was found, not a live reading. Reporting it live would give this
+        # section a new identity on every tick, putting it on the wire every
+        # second and re-rendering every screen holding the offer.
+        "timer": {
+            "running": _timer_state["running"],
+            "target": _timer_state["target"],
+            "seconds": _get_timer_seconds(),
+        },
     }
 
 
@@ -664,6 +770,7 @@ def _session_resume_report() -> Dict[str, Any]:
             "stageIndex": None,
             "loggedRows": None,
             "brewSession": None,
+            "timer": None,
         }
     return {"pending": True, **_pending_resume}
 
@@ -1378,6 +1485,10 @@ def _state_snapshot() -> Dict[str, Any]:
     """
     return {
         "temperatures": dict(_temperature_cache),
+        # Which of those numbers is a held one rather than a fresh reading —
+        # see _hold_through_dropouts. Settled almost always, so it diffs to
+        # nothing and costs a connected client no traffic.
+        "sensorHeld": {pot: status == "held" for pot, status in _sensor_status.items()},
         "controlState": copy.deepcopy(_control_state),
         "timer": {
             "running": _timer_state["running"],
@@ -1662,6 +1773,15 @@ async def set_pump_speed(pump: str, body: PumpSpeedRequest) -> Dict[str, str]:
         raise HTTPException(status_code=400, detail=f"Unknown pump: {pump}")
 
     _control_state["pumps"][pump]["speed"] = body.value
+    # A zero never overwrites the memory. Switching a pump off writes one
+    # through here, and remembering it would empty the memory at exactly the
+    # moment it is about to be needed. Everything else is remembered, including
+    # the steps a client ramps through on its way to a new speed: they settle on
+    # the speed that was asked for, so the memory settles there too. Switching a
+    # pump off mid-ramp is the one case that leaves a number nobody picked, and
+    # it is off by less than the two seconds a ramp takes.
+    if body.value > 0:
+        _control_state["pumps"][pump]["lastSpeed"] = body.value
     config = read_config()
     _, pwm_pin, _ = _pump_pin_map(pump, config)
     utils_rpi.change_pwm_duty_cycle(pwm_pin, body.value)

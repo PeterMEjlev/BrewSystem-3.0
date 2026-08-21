@@ -1,0 +1,157 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.pad {
+  width: 100%;
+  max-width: 380px;
+  padding: 22px 22px 20px;
+  background: var(--color-bg-secondary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-hover);
+}
+
+.fieldName {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-dark);
+  margin-bottom: 10px;
+}
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  min-height: 34px;
+  background: var(--color-bg-primary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* Carries over what a focused text field does on a machine with a keyboard:
+   the old value is still readable, and the next digit replaces it. */
+.readoutReplacing {
+  border-color: var(--color-accent-blue);
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.readoutValue {
+  font-size: var(--font-size-2xl, 1.75rem);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.readoutUnit {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.key {
+  /* Sized for a fingertip on the rig's touchscreen, not a mouse pointer. */
+  min-height: 64px;
+  font-family: inherit;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition-fast);
+}
+
+.key:active {
+  transform: scale(0.96);
+  border-color: var(--color-accent-blue);
+}
+
+.keyMuted {
+  color: var(--color-text-muted);
+}
+
+.secondaryRow {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.secondaryBtn {
+  flex: 1;
+  min-height: 48px;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition-fast);
+}
+
+.secondaryBtn:active {
+  transform: scale(0.97);
+  color: var(--color-text-primary);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.cancelBtn,
+.doneBtn {
+  flex: 1;
+  min-height: 52px;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition-fast);
+}
+
+.cancelBtn {
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 2px solid var(--color-border);
+}
+
+.doneBtn {
+  color: white;
+  background: var(--gradient-warm);
+  border: none;
+}
+
+.cancelBtn:active,
+.doneBtn:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}

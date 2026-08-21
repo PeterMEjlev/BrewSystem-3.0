@@ -3,6 +3,10 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { playToggleOn, playToggleOff } from '../../utils/sounds';
 import styles from './PumpCard.module.css';
 
+// Only reached before the backend has a memory to offer — a pump that has
+// never been run since this backend started.
+const DEFAULT_PUMP_SPEED = 50;
+
 function PumpCard({ name, pumpState, onUpdate }) {
   const { theme } = useTheme();
   const [localSpeed, setLocalSpeed] = useState(pumpState.speed || 0);
@@ -15,9 +19,14 @@ function PumpCard({ name, pumpState, onUpdate }) {
     pumpState.on ? playToggleOff() : playToggleOn();
     const turningOn = !pumpState.on;
     const updates = { on: turningOn };
+    // Switching a pump off drops its speed to 0, so turning it back on needs a
+    // number from somewhere. The backend remembers the one the brewer last
+    // chose (see lastSpeed in _control_state) — that survives a reload, and the
+    // BrewPlanner mirror of this panel reads the same memory.
     if (turningOn && (pumpState.speed || 0) === 0) {
-      updates.speed = 50;
-      setLocalSpeed(50);
+      const resumeSpeed = pumpState.lastSpeed ?? DEFAULT_PUMP_SPEED;
+      updates.speed = resumeSpeed;
+      setLocalSpeed(resumeSpeed);
     }
     onUpdate(updates);
   };

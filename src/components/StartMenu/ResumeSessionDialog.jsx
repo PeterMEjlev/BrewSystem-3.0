@@ -33,7 +33,7 @@ const formatClock = (totalSeconds) => {
  * without reading it would be left unsure which brew the chart belongs to, and
  * on a screen with no keyboard there is nothing to press by accident.
  */
-function ResumeSessionDialog({ offer, timer, onResume, onStartFresh }) {
+function ResumeSessionDialog({ offer, onResume, onStartFresh }) {
   const [busy, setBusy] = useState(null);
 
   const choose = async (action, handler) => {
@@ -48,9 +48,11 @@ function ResumeSessionDialog({ offer, timer, onResume, onStartFresh }) {
   };
 
   const beer = offer.brewSession?.name;
-  const timerRunning = Boolean(timer?.running);
-  const timerLabel = timer?.target > 0 && (timerRunning || timer.seconds > 0)
-    ? `${formatClock(timer.seconds)} ${timerRunning ? 'left on the timer' : 'left on the timer (paused)'}`
+  // The timer as it stood when the rig came back — part of the description of
+  // what was found, not a live reading.
+  const timer = offer.timer;
+  const timerLabel = timer && timer.target > 0
+    ? `${formatClock(timer.seconds)} left${timer.running ? '' : ' (paused)'}`
     : null;
 
   return (

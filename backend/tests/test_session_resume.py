@@ -298,6 +298,28 @@ def test_the_offer_is_reported_to_the_screens(app_module, brew):
     assert report["stage"] == app_module.BREW_STAGES[2]
 
 
+def test_the_offer_describes_the_timer_it_found(app_module, brew, clock):
+    """Frozen at restore, not read live — reporting it live would re-identify
+    the whole section every tick and push it to every screen every second."""
+    brew(stage_steps=5, timer_target=3600, timer_running=True)
+    clock.advance(40)
+    offer = restart(app_module, away_seconds=40)
+    assert offer["timer"]["running"] is True
+    assert offer["timer"]["target"] == 3600
+    assert offer["timer"]["seconds"] == pytest.approx(3560, abs=1)
+
+
+def test_a_settled_offer_holds_still_on_the_wire(app_module, brew):
+    """The section must not change from one snapshot to the next while it sits
+    pending, or a running timer inside it would put a frame on the wire every
+    second for as long as nobody answers."""
+    brew(stage_steps=5, timer_target=3600, timer_running=True)
+    restart(app_module)
+    first = app_module._comparable(app_module._state_snapshot())
+    second = app_module._comparable(app_module._state_snapshot())
+    assert "sessionResume" not in app_module._diff(first, second)
+
+
 def test_settling_the_offer_leaves_no_fields_behind(app_module, brew):
     """The socket diff only reports keys the new state has, so this section has
     to keep its shape or a client holds a settled offer's details forever."""

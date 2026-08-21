@@ -45,9 +45,6 @@ function NewBrewSessionDialog({ recipes, onClose, onStart }) {
     }
   };
 
-  const selected = recipes.find((r) => r.id === recipeId);
-  const swatch = ebcToColor(selected?.ebc);
-
   return (
     <div
       className={styles.backdrop}
@@ -69,27 +66,42 @@ function NewBrewSessionDialog({ recipes, onClose, onStart }) {
 
         {error && <div className={styles.error}>{error}</div>}
 
-        <label className={styles.label} htmlFor="brew-session-recipe">Recipe</label>
-        <div className={styles.selectWrap}>
-          {swatch && <span className={styles.swatch} style={{ background: swatch }} />}
-          <select
-            id="brew-session-recipe"
-            className={`${styles.select} ${swatch ? styles.selectWithSwatch : ''}`}
-            value={recipeId}
-            onChange={(e) => setRecipeId(e.target.value)}
-            disabled={saving || recipes.length === 0}
+        <span className={styles.label} id="brew-session-recipe-label">Recipe</span>
+        {recipes.length === 0 ? (
+          <p className={styles.emptyList}>No recipes in BrewPlanner</p>
+        ) : (
+          <div
+            className={styles.recipeList}
+            role="listbox"
+            aria-labelledby="brew-session-recipe-label"
           >
-            {recipes.length === 0 && <option value="">No recipes in BrewPlanner</option>}
             {recipes.map((recipe) => {
               const facts = [recipe.style, recipe.abv && `${recipe.abv}%`].filter(Boolean);
+              const isSelected = recipe.id === recipeId;
               return (
-                <option key={recipe.id} value={recipe.id}>
-                  {recipe.name}{facts.length > 0 ? ` — ${facts.join(' · ')}` : ''}
-                </option>
+                <button
+                  key={recipe.id}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`${styles.recipeRow} ${isSelected ? styles.recipeRowSelected : ''}`}
+                  disabled={saving}
+                  onClick={() => { playClick(); setRecipeId(recipe.id); }}
+                >
+                  <span
+                    className={styles.rowSwatch}
+                    style={{ background: ebcToColor(recipe.ebc) || 'transparent' }}
+                  />
+                  <span className={styles.rowText}>
+                    <span className={styles.rowName}>{recipe.name}</span>
+                    {facts.length > 0 && <span className={styles.rowFacts}>{facts.join(' · ')}</span>}
+                  </span>
+                  {isSelected && <span className={styles.rowCheck} aria-hidden="true">✓</span>}
+                </button>
               );
             })}
-          </select>
-        </div>
+          </div>
+        )}
 
         <label className={styles.label} htmlFor="brew-session-date">Brew date</label>
         <input

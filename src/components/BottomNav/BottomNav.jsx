@@ -22,7 +22,7 @@ function BottomNav({ activePanel, onPanelChange, bruceState }) {
             d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"
           />
         </svg>
-        <span className={styles.label}>Home</span>
+        <span className={styles.label}>Front Page</span>
       </button>
 
       <button

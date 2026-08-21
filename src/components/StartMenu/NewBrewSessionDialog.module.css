@@ -52,25 +52,95 @@
   color: var(--color-text-dark);
 }
 
-.selectWrap {
-  position: relative;
+/* A native <select> hands the list to the OS, which draws it at pointer size
+   and puts it wherever it likes over a fullscreen kiosk. This is the same
+   choice as rows big enough to hit with a thumb, each carrying the colour of
+   the beer — which is how a recipe is recognised here at a glance. */
+.recipeList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Roughly four rows before it scrolls, so a long BrewPlanner library cannot
+     push the date field and the buttons off the dialog. */
+  max-height: 264px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
-/* The colour of the beer, in the field itself — a native <option> can't carry
-   one, and it is how every other recipe row here is recognised at a glance. */
-.swatch {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
+.recipeRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 16px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition-fast);
+}
+
+.recipeRow:active {
+  transform: scale(0.99);
+}
+
+.recipeRowSelected {
+  border-color: var(--color-gradient-warm-end);
+  background: rgba(240, 76, 101, 0.12);
+}
+
+.recipeRow:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rowSwatch {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.25);
-  pointer-events: none;
 }
 
-.select,
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rowName {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+.rowFacts {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.rowCheck {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--font-size-lg);
+  color: var(--color-gradient-warm-end);
+}
+
+.emptyList {
+  margin: 0;
+  padding: 18px 16px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  background: var(--color-bg-primary);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .dateInput {
   width: 100%;
   padding: 14px 16px;
@@ -84,21 +154,11 @@
   touch-action: manipulation;
 }
 
-.selectWithSwatch {
-  padding-left: 42px;
-}
-
-.select {
-  cursor: pointer;
-}
-
-.select:focus,
 .dateInput:focus {
   outline: none;
   border-color: var(--color-gradient-warm-end);
 }
 
-.select:disabled,
 .dateInput:disabled {
   opacity: 0.5;
 }

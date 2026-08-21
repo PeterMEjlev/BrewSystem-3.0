@@ -29,15 +29,18 @@ class MockBrewSystem {
       },
     };
 
-    // Pump states
+    // Pump states. lastSpeed mirrors the backend's memory of the speed the
+    // brewer chose, so dev mode resumes a pump where the rig would.
     this.pumps = {
       P1: {
         on: false,
         speed: 0,
+        lastSpeed: 50,
       },
       P2: {
         on: false,
         speed: 0,
+        lastSpeed: 50,
       },
     };
 
@@ -184,6 +187,8 @@ class MockBrewSystem {
   setPumpSpeed(pumpName, speed) {
     if (this.pumps[pumpName]) {
       this.pumps[pumpName].speed = speed;
+      // A zero is a pump being switched off, not a speed to come back to.
+      if (speed > 0) this.pumps[pumpName].lastSpeed = speed;
     }
   }
 

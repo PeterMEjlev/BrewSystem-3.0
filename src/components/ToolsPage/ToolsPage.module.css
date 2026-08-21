@@ -61,6 +61,26 @@
   border-color: var(--color-accent-blue);
 }
 
+/* The field is a button now — it opens the number pad rather than taking
+   keystrokes, because the rig has no keyboard to give it any. Sized for a
+   fingertip, and left-aligned so it still reads as somewhere a value goes. */
+.inputButton {
+  min-height: 48px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.inputButton:active {
+  transform: scale(0.98);
+  border-color: var(--color-accent-blue);
+}
+
+.inputPlaceholder {
+  color: var(--color-text-muted);
+}
+
 .unit {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);

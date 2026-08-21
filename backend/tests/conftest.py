@@ -96,7 +96,7 @@ def app_module(tmp_path, monkeypatch, gpio):
     for pot in main._control_state["pots"].values():
         pot.update({"heaterOn": False, "sv": 100.0, "efficiency": 0, "regulationEnabled": False})
     for pump in main._control_state["pumps"].values():
-        pump.update({"on": False, "speed": 0.0})
+        pump.update({"on": False, "speed": 0.0, "lastSpeed": main._DEFAULT_PUMP_SPEED})
     main._reset_timer()
     main._stage_state.update({"index": main.STAGE_NOT_STARTED, "markers": []})
     # The resume record is disk state, so it has to be pointed at the throwaway
@@ -106,6 +106,11 @@ def app_module(tmp_path, monkeypatch, gpio):
     monkeypatch.setattr(main, "_pending_resume", None)
     monkeypatch.setattr(main, "_last_saved_session_state", None)
     main._temperature_cache.update({"bk": None, "mlt": None, "hlt": None})
+    # The dropout bridge remembers readings across sweeps, so one test's held
+    # value would otherwise stand in for the next test's failed sensor.
+    main._last_good_reading.update({"bk": None, "mlt": None, "hlt": None})
+    main._last_good_at.update({"bk": 0.0, "mlt": 0.0, "hlt": 0.0})
+    main._sensor_status.update({"bk": "ok", "mlt": "ok", "hlt": "ok"})
     for pot in main._heat_watch:
         main._heat_watch[pot].update({"since": None, "baseline": None, "faulted_at": None})
 

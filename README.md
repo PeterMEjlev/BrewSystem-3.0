@@ -438,6 +438,41 @@ Offsets are clamped to ±5 °C: a probe further out than that is broken or is no
 in the pot it is labelled with, and quietly correcting for it would hide the
 fault the heating watcher exists to catch.
 
+### Dropped sensor reads
+
+Three DS18B20s share one bus, in a brewery, alongside 200 Hz PWM switching the
+SSRs. That bus drops the occasional transaction — a CRC that comes back `NO`,
+an `EIO` from a busy master, a device that blinks out of `/sys/bus/w1/devices`
+for one sweep. All of them look identical to a dead probe at the point of the
+read: `read_ds18b20` returns `None`.
+
+A single one of those is not evidence of a dead probe, so it is no longer
+treated as one. A failed read reuses that sensor's last good value for up to
+**3 seconds** (`_SENSOR_HOLD_SECONDS`), and only a sensor still failing after
+that publishes "no reading" — the `--` on the panel. Before this, one bad CRC
+put `--` on screen for a second and, for a pot under regulation, dropped its
+element with it.
+
+The window is bounded by wall time, not by a count of sweeps, so a slow loop
+cannot stretch it. It sits well inside the 10 s stale-sensor watchdog, which
+remains the outer bound on running blind, and far short of the 2-minute
+heating-fault window, so a held (and therefore flat) reading cannot age into a
+false "not heating" warning.
+
+Everything a confirmed sensor failure did, it still does: a regulating pot with
+no reading has its heater forced off. A held reading is marked as held in the
+state snapshot (`sensorHeld`), so nothing downstream mistakes it for a fresh
+one. The panel deliberately does not badge it — the hold lasts at most three
+seconds, and blinking a warning for three seconds would just reintroduce the
+flicker this removes.
+
+If a pot shows `--` and stays there, that is a real fault rather than bus
+noise: check the serials in `config.json` against `ls /sys/bus/w1/devices/`,
+since a probe that has been replaced comes back with a different address. The
+backend logs each transition at the point it happens, so `journalctl -u
+brew-system` (grep for `sensor read failed` and `sensor has not read`) shows
+how often the bus is actually glitching.
+
 ## Hardware Integration
 
 The current implementation uses a mock hardware layer (`src/utils/mockHardware.js`).
@@ -634,7 +669,7 @@ Worth knowing:
   it. Left at today, no timestamp is sent at all and BrewPlanner stamps the real
   clock time the brew started.
 
-The menu is reachable again at any time from **Home** in the bottom nav.
+The menu is reachable again at any time from **Front Page** in the bottom nav.
 
 ## Screen Sleep
 

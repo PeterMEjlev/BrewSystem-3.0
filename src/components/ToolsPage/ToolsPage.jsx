@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useId } from 'react';
 import SidebarLayout from '../SidebarLayout/SidebarLayout';
+import NumericKeypad from '../NumericKeypad/NumericKeypad';
 import { playClick } from '../../utils/sounds';
 import styles from './ToolsPage.module.css';
 
@@ -47,6 +48,46 @@ const TOOL_ITEMS = [
   },
 ];
 
+/**
+ * A value the brewer can actually set with a fingertip.
+ *
+ * Reads as the field it replaces, but tapping it opens the number pad rather
+ * than focusing an input that nothing on this machine can type into — the rig
+ * has no keyboard, on screen or otherwise. Values stay strings the whole way,
+ * so every calculator below parses exactly what it always did.
+ */
+function NumericField({ label, value, onChange, unit, placeholder, allowNegative = false }) {
+  const [editing, setEditing] = useState(false);
+  const labelId = useId();
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.label} id={labelId}>{label}</span>
+      <div className={styles.inputRow}>
+        <button
+          type="button"
+          aria-labelledby={labelId}
+          className={`${styles.input} ${styles.inputButton} ${value === '' ? styles.inputPlaceholder : ''}`}
+          onClick={() => { playClick(); setEditing(true); }}
+        >
+          {value === '' ? placeholder : value}
+        </button>
+        {unit && <span className={styles.unit}>{unit}</span>}
+      </div>
+      {editing && (
+        <NumericKeypad
+          label={label}
+          unit={unit}
+          initialValue={value}
+          allowNegative={allowNegative}
+          onCommit={(next) => { onChange(next); setEditing(false); }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function DilutionCalculator() {
   const [wortVolume, setWortVolume] = useState('');
   const [currentGravity, setCurrentGravity] = useState('');
@@ -58,14 +99,6 @@ function DilutionCalculator() {
   const parseGravity = (str) => {
     const num = parseFloat(String(str).replace(/,/g, ''));
     return num >= 2 ? num / 1000 : num;
-  };
-
-  const formatGravityBlur = (value, setter) => {
-    const raw = String(value).replace(/,/g, '');
-    const num = parseFloat(raw);
-    if (!isNaN(num) && num >= 1000) {
-      setter(num.toLocaleString('en-US'));
-    }
   };
 
   const calculate = () => {
@@ -102,47 +135,27 @@ function DilutionCalculator() {
       <p className={styles.calcSubtitle}>Target gravity is known — finds new volume</p>
 
       <div className={styles.fields}>
-        <div className={styles.field}>
-          <label className={styles.label}>Wort Volume</label>
-          <div className={styles.inputRow}>
-            <input
-              className={styles.input}
-              type="number"
-              min="0"
-              step="0.1"
-              value={wortVolume}
-              onChange={e => setWortVolume(e.target.value)}
-              placeholder="e.g. 20"
-            />
-            <span className={styles.unit}>L</span>
-          </div>
-        </div>
+        <NumericField
+          label="Wort Volume"
+          unit="L"
+          value={wortVolume}
+          onChange={setWortVolume}
+          placeholder="e.g. 20"
+        />
 
-        <div className={styles.field}>
-          <label className={styles.label}>Current Gravity</label>
-          <input
-            className={styles.input}
-            type="text"
-            inputMode="decimal"
-            value={currentGravity}
-            onChange={e => setCurrentGravity(e.target.value.replace(/,/g, ''))}
-            onBlur={() => formatGravityBlur(currentGravity, setCurrentGravity)}
-            placeholder="e.g. 1.075 or 1075"
-          />
-        </div>
+        <NumericField
+          label="Current Gravity"
+          value={currentGravity}
+          onChange={setCurrentGravity}
+          placeholder="e.g. 1.075 or 1075"
+        />
 
-        <div className={styles.field}>
-          <label className={styles.label}>Desired Gravity</label>
-          <input
-            className={styles.input}
-            type="text"
-            inputMode="decimal"
-            value={desiredGravity}
-            onChange={e => setDesiredGravity(e.target.value.replace(/,/g, ''))}
-            onBlur={() => formatGravityBlur(desiredGravity, setDesiredGravity)}
-            placeholder="e.g. 1.050 or 1050"
-          />
-        </div>
+        <NumericField
+          label="Desired Gravity"
+          value={desiredGravity}
+          onChange={setDesiredGravity}
+          placeholder="e.g. 1.050 or 1050"
+        />
       </div>
 
       {error && <p className={styles.error}>{error}</p>}
@@ -223,33 +236,21 @@ function CarbonationCalculator() {
       <p className={styles.calcSubtitle}>Finds the regulator pressure needed to force-carbonate at a given temperature</p>
 
       <div className={styles.fields}>
-        <div className={styles.field}>
-          <label className={styles.label}>Volumes of CO₂</label>
-          <input
-            className={styles.input}
-            type="number"
-            min="0"
-            step="0.1"
-            value={volumes}
-            onChange={e => setVolumes(e.target.value)}
-            placeholder="e.g. 2.4"
-          />
-        </div>
+        <NumericField
+          label="Volumes of CO₂"
+          value={volumes}
+          onChange={setVolumes}
+          placeholder="e.g. 2.4"
+        />
 
-        <div className={styles.field}>
-          <label className={styles.label}>Keg Temperature</label>
-          <div className={styles.inputRow}>
-            <input
-              className={styles.input}
-              type="number"
-              step="0.5"
-              value={tempC}
-              onChange={e => setTempC(e.target.value)}
-              placeholder="e.g. 2"
-            />
-            <span className={styles.unit}>°C</span>
-          </div>
-        </div>
+        <NumericField
+          label="Keg Temperature"
+          unit="°C"
+          value={tempC}
+          onChange={setTempC}
+          placeholder="e.g. 2"
+          allowNegative
+        />
       </div>
 
       {error && <p className={styles.error}>{error}</p>}
@@ -325,50 +326,31 @@ function HydrometerCalculator() {
       <p className={styles.calcSubtitle}>Corrects a hydrometer reading for the difference between sample temperature and calibration temperature</p>
 
       <div className={styles.fields}>
-        <div className={styles.field}>
-          <label className={styles.label}>Hydrometer Reading</label>
-          <div className={styles.inputRow}>
-            <input
-              className={styles.input}
-              type="number"
-              step="0.001"
-              value={reading}
-              onChange={e => setReading(e.target.value)}
-              placeholder="e.g. 1.020"
-            />
-            <span className={styles.unit}>SG</span>
-          </div>
-        </div>
+        <NumericField
+          label="Hydrometer Reading"
+          unit="SG"
+          value={reading}
+          onChange={setReading}
+          placeholder="e.g. 1.020"
+        />
 
-        <div className={styles.field}>
-          <label className={styles.label}>Sample Temperature</label>
-          <div className={styles.inputRow}>
-            <input
-              className={styles.input}
-              type="number"
-              step="0.5"
-              value={sampleTemp}
-              onChange={e => setSampleTemp(e.target.value)}
-              placeholder="e.g. 27"
-            />
-            <span className={styles.unit}>°C</span>
-          </div>
-        </div>
+        <NumericField
+          label="Sample Temperature"
+          unit="°C"
+          value={sampleTemp}
+          onChange={setSampleTemp}
+          placeholder="e.g. 27"
+          allowNegative
+        />
 
-        <div className={styles.field}>
-          <label className={styles.label}>Calibration Temperature</label>
-          <div className={styles.inputRow}>
-            <input
-              className={styles.input}
-              type="number"
-              step="0.5"
-              value={calibTemp}
-              onChange={e => setCalibTemp(e.target.value)}
-              placeholder="e.g. 20"
-            />
-            <span className={styles.unit}>°C</span>
-          </div>
-        </div>
+        <NumericField
+          label="Calibration Temperature"
+          unit="°C"
+          value={calibTemp}
+          onChange={setCalibTemp}
+          placeholder="e.g. 20"
+          allowNegative
+        />
       </div>
 
       {error && <p className={styles.error}>{error}</p>}

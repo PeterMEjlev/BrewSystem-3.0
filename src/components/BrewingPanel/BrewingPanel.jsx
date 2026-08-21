@@ -150,6 +150,13 @@ function BrewingPanel() {
           MLT: { ...prev.pots.MLT, pv: mock.pots.MLT.pv },
           HLT: { ...prev.pots.HLT, ...mock.pots.HLT },
         },
+        // Only the remembered speed, not the live one: the mock holds the duty
+        // the ramp is passing through, and the slider must keep showing the
+        // speed that was asked for.
+        pumps: {
+          P1: { ...prev.pumps.P1, lastSpeed: mock.pumps.P1.lastSpeed },
+          P2: { ...prev.pumps.P2, lastSpeed: mock.pumps.P2.lastSpeed },
+        },
       }));
     }, 1000);
     return () => clearInterval(interval);

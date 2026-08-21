@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BruceHistoryProvider } from './contexts/BruceHistoryContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -14,7 +14,16 @@ import BruceHistoryPage from './components/BruceHistoryPage/BruceHistoryPage';
 import Settings from './components/Settings/Settings';
 import ScreenSleepOverlay from './components/ScreenSleep/ScreenSleepOverlay';
 import { useScreenSleep } from './hooks/useScreenSleep';
+import { subscribeLiveState, getLiveState } from './utils/liveState';
 import './App.css';
+
+// Read as a selector rather than through the whole live snapshot: the object
+// keeps its identity across pushes that didn't touch it, so a temperature
+// arriving does not re-render the entire app shell. Stable fallback for the
+// same reason — a new object each call would re-render forever.
+const NO_RESUME = { pending: false };
+const getSessionResume = () => getLiveState().state?.sessionResume ?? NO_RESUME;
+
 
 function AppShell() {
   // Null until the launch check below settles, so nothing is drawn twice: a rig
@@ -22,9 +31,23 @@ function AppShell() {
   // the brewing screen.
   const [activePanel, setActivePanel] = useState(null);
   const [bruceState, setBruceState] = useState('idle');
-  // An interrupted brew the backend picked back up on its way in, waiting to be
-  // confirmed. Null when there is nothing to confirm, which is almost always.
-  const [resume, setResume] = useState(null);
+  // An interrupted brew the backend picked back up, waiting to be confirmed.
+  //
+  // Taken from the pushed state rather than only from the launch check below,
+  // because the usual restart does not reload this app at all: the update
+  // button bounces the backend service while the kiosk keeps running, so the
+  // offer has to be able to arrive on the socket mid-session. The launch fetch
+  // covers the other direction — a kiosk that reloads before the socket is up.
+  const liveResume = useSyncExternalStore(subscribeLiveState, getSessionResume);
+  const [launchResume, setLaunchResume] = useState(null);
+  // The sentinel's identity is the signal that the socket has not spoken yet,
+  // which is the only time the launch check's answer is still the better one.
+  // Once a snapshot has landed, the socket is the truth — including when it
+  // says the offer has been settled from another screen.
+  const socketSilent = liveResume === NO_RESUME;
+  const resume = liveResume.pending
+    ? liveResume
+    : (socketSilent && launchResume?.pending ? launchResume : null);
   // Where the launch check landed. Held here rather than in state because it is
   // only read once the resume dialog is answered, and only if it is answered
   // with "start fresh".
@@ -65,7 +88,7 @@ function AppShell() {
       if (cancelled) return;
       launchPanel.current = active?.active ? 'brewing' : 'home';
       if (state?.sessionResume?.pending) {
-        setResume({ offer: state.sessionResume, timer: state.timer });
+        setLaunchResume(state.sessionResume);
         return; // activePanel stays null: nothing is drawn behind the question
       }
       setActivePanel(launchPanel.current);
@@ -85,8 +108,12 @@ function AppShell() {
         body: JSON.stringify({ action }),
       });
     } catch { /* nothing to recover — see above */ }
-    setResume(null);
-    setActivePanel(action === 'resume' ? 'brewing' : launchPanel.current);
+    setLaunchResume(null);
+    // Only routes when this is the launch — an offer that arrived mid-session
+    // must not yank the brewer off the page they were already looking at.
+    setActivePanel((current) =>
+      current ?? (action === 'resume' ? 'brewing' : launchPanel.current)
+    );
   };
 
   // Log the batch on BrewPlanner, then get out of the way — the brewer pressed
@@ -141,8 +168,7 @@ function AppShell() {
         {activePanel === 'settings' && <Settings />}
         {resume && (
           <ResumeSessionDialog
-            offer={resume.offer}
-            timer={resume.timer}
+            offer={resume}
             onResume={() => answerResume('resume')}
             onStartFresh={() => answerResume('fresh')}
           />
