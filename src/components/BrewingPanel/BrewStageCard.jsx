@@ -9,10 +9,11 @@ const formatClock = (ms) =>
 /**
  * Where the brew day has got to, in the space under the MLT card.
  *
- * Shows the stage that is running and names the one ahead on the button that
- * moves to it, so the brewer never has to remember the running order. Back is
- * the small button: going forward is the thing being done all day, going back
- * is undoing a wrong tap.
+ * One row: the stage that is running, flanked by the two chevrons that move
+ * off it. The stage ahead is named under the current one — the brewer never
+ * has to remember the running order — and the forward chevron is the warm one
+ * because going forward is the thing being done all day, while going back is
+ * undoing a wrong tap.
  */
 function BrewStageCard() {
   const { stages, index, markers } = useSyncExternalStore(subscribeBrewStage, getBrewStage);
@@ -25,21 +26,17 @@ function BrewStageCard() {
   const enteredAt = markers.length > 0 ? markers[markers.length - 1].ts : null;
 
   const heading = notStarted ? 'Not started' : complete ? 'Brew complete' : stages[index];
-  const detail = notStarted
-    ? 'Nothing recorded yet'
-    : enteredAt != null
-    ? `${complete ? 'Finished' : 'Started'} ${formatClock(enteredAt)}`
-    : ' ';
+  const step = notStarted
+    ? `${stages.length} stages`
+    : complete
+    ? 'Done'
+    : `${index + 1}/${stages.length}`;
 
-  // "Start:" rather than "Next:" for the first one — the brew has not begun,
-  // and the timestamp this writes is the one every later stage is read against.
-  const forwardLabel = complete
-    ? null
-    : notStarted
-    ? `Start: ${stages[0]}`
-    : nextStage
-    ? `Next: ${nextStage}`
-    : 'Finish brew';
+  // What the forward chevron moves to. Before the brew begins that is the
+  // first stage, whose timestamp every later one is read against; on the last
+  // stage it is the end of the brew rather than another name.
+  const ahead = complete ? null : notStarted ? stages[0] : nextStage ?? 'Finish brew';
+  const since = enteredAt == null ? null : `${complete ? 'ended' : 'since'} ${formatClock(enteredAt)}`;
 
   const handleForward = () => {
     playToggleOn();
@@ -53,38 +50,37 @@ function BrewStageCard() {
 
   return (
     <div className={styles.stageCard}>
-      <div className={styles.header}>
-        <span className={styles.label}>Brew Stage</span>
-        <span className={styles.step}>
-          {notStarted ? `${stages.length} stages` : complete ? 'Done' : `Step ${index + 1} of ${stages.length}`}
-        </span>
-      </div>
+      <button
+        className={styles.backBtn}
+        onClick={handleBack}
+        disabled={notStarted}
+        aria-label="Previous stage"
+      >
+        ‹
+      </button>
 
       <div className={styles.body}>
+        <div className={styles.eyebrow}>
+          <span className={styles.label}>Brew Stage</span>
+          <span className={styles.step}>{step}</span>
+        </div>
         <div className={`${styles.heading} ${notStarted || complete ? styles.headingIdle : ''}`}>
           {heading}
         </div>
-        <div className={styles.detail}>{detail}</div>
+        <div className={styles.meta}>
+          <span className={styles.ahead}>{ahead && `› ${ahead}`}</span>
+          {since && <span className={styles.since}>{since}</span>}
+        </div>
       </div>
 
-      <div className={styles.controls}>
-        <button
-          className={styles.backBtn}
-          onClick={handleBack}
-          disabled={notStarted}
-          aria-label="Previous stage"
-        >
-          ‹
-        </button>
-        <button
-          className={`${styles.forwardBtn} ${complete ? styles.forwardDone : ''}`}
-          onClick={handleForward}
-          disabled={complete}
-        >
-          <span className={styles.forwardText}>{forwardLabel ?? 'Brew complete'}</span>
-          {!complete && <span className={styles.forwardChevron}>›</span>}
-        </button>
-      </div>
+      <button
+        className={styles.forwardBtn}
+        onClick={handleForward}
+        disabled={complete}
+        aria-label={complete ? 'Brew complete' : `Next stage: ${ahead}`}
+      >
+        ›
+      </button>
     </div>
   );
 }

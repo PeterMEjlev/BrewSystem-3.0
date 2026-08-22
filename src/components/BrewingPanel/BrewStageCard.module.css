@@ -1,49 +1,50 @@
+/* One row: chevron, stage, chevron. The card sits under MLT in the room its
+   missing heater controls leave behind, so it stays short — the 64px touch
+   targets set its height, and only the long stage names ("Heat water (for
+   mash)") on a narrow column wrap past them, by a line. */
 .stageCard {
-  border-radius: var(--radius-xl);
-  padding: 20px 24px;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-xl);
   background: var(--color-bg-secondary);
   box-shadow: var(--shadow-card);
 }
 
-.header {
+.body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.eyebrow {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: 8px;
 }
 
 .label {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text-dark);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .step {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   color: var(--color-text-muted);
   white-space: nowrap;
 }
 
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 16px 20px;
-  background: var(--color-bg-primary);
-  border-radius: var(--radius-lg);
-}
-
-/* Long names ("Heat water (for mash)") wrap rather than shrink — this is read
-   from across a brewery, so the line breaking is the part that gives. */
 .heading {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   line-height: 1.15;
@@ -53,33 +54,56 @@
   color: var(--color-text-muted);
 }
 
-.detail {
-  font-size: var(--font-size-base);
-  font-family: var(--font-mono);
+/* The stage ahead, and when the current one was entered. The name is what
+   gives when the column is narrow — it is repeated in full as the heading the
+   moment the forward chevron is pressed. */
+.meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--font-size-xs);
   color: var(--color-text-dark);
   min-height: 1.2em;
 }
 
-.controls {
-  display: flex;
-  gap: 12px;
+.ahead {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.since {
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .backBtn,
 .forwardBtn {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 2px solid var(--color-border-light);
   background: transparent;
   color: var(--color-text-secondary);
   border-radius: var(--radius-md);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
   cursor: pointer;
   transition: var(--transition-fast);
   touch-action: manipulation;
-  font-weight: var(--font-weight-semibold);
 }
 
 .backBtn:active:not(:disabled),
 .forwardBtn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: scale(0.94);
 }
 
 .backBtn:disabled,
@@ -88,44 +112,10 @@
   cursor: not-allowed;
 }
 
-.backBtn {
-  flex: 0 0 auto;
-  min-width: 72px;
-  font-size: var(--font-size-2xl);
-  line-height: 1;
-  padding: 0 18px;
-}
-
-/* The forward button is the one being pressed all day, so it gets the warm
-   fill every other "this does something" control on the panel uses. */
+/* Forward is the one being pressed all day, so it gets the warm fill every
+   other "this does something" control on the panel uses. */
 .forwardBtn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 64px;
-  padding: 12px 20px;
-  font-size: var(--font-size-lg);
   background: var(--gradient-warm);
   border-color: transparent;
   color: white;
-  text-align: left;
-}
-
-.forwardBtn.forwardDone {
-  background: transparent;
-  border-color: var(--color-border-light);
-  color: var(--color-text-muted);
-  justify-content: center;
-}
-
-.forwardText {
-  min-width: 0;
-}
-
-.forwardChevron {
-  font-size: var(--font-size-2xl);
-  line-height: 1;
-  flex-shrink: 0;
 }
