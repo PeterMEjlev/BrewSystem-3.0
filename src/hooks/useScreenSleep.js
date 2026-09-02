@@ -19,6 +19,12 @@ import { DEFAULT_SCREEN_SLEEP } from '../utils/appDefaults';
 // anywhere counts, including on controls that stop their own propagation.
 const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'];
 
+// Which of those may wake a panel that has already gone dark. A deliberate
+// touch, a key or the wheel — all of them need a person. `pointermove` is left
+// out on purpose, because the panel going to sleep produces one by itself: see
+// onActivity below.
+const WAKE_EVENTS = new Set(['pointerdown', 'keydown', 'wheel', 'touchstart']);
+
 // How long to wait before asking again once the rig turns out to be busy.
 const BUSY_RECHECK_MS = 30_000;
 
@@ -86,7 +92,31 @@ export function useScreenSleep() {
       window.displayAPI?.sleep();
     };
 
-    const onActivity = () => {
+    // Where the cursor last was, in screen coordinates rather than window ones,
+    // so that the window moving or resizing underneath it does not read as the
+    // cursor having gone anywhere.
+    let pointerAt = null;
+
+    const pointerMoved = (event) => {
+      const before = pointerAt;
+      pointerAt = { x: event.screenX, y: event.screenY };
+      return !before || before.x !== pointerAt.x || before.y !== pointerAt.y;
+    };
+
+    const onActivity = (event) => {
+      // Chromium synthesises a pointermove whenever the layout shifts under the
+      // cursor, and this window's layout shifts *because* the panel slept: the
+      // monitor entering standby makes labwc un-fullscreen the kiosk, and
+      // restoreKiosk() in electron/main.js sizes it back. Both were arriving as
+      // brewer activity, so every sleep was undone about eight seconds later and
+      // the panel spent five days blinking off and on at the idle interval.
+      if (event.type === 'pointermove' && !pointerMoved(event)) return;
+
+      // A move that really happened still is not a wake: the panel is dark, so
+      // there is nothing on it to look at yet. Only the events a person has to
+      // mean — a touch, a key, the wheel — bring it back.
+      if (asleepRef.current && !WAKE_EVENTS.has(event.type)) return;
+
       activityCount += 1;
       wake();
       arm(timeoutMs);
