@@ -65,6 +65,9 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
   const { theme } = useTheme();
   // pv can be null when the sensor fails — show '--' rather than a fake number
   const sensorOk = potState.pv != null;
+  // Why it failed, from the backend. Stated under the '--' rather than left in
+  // a title attribute: this is a touchscreen, and nothing hovers over it.
+  const sensorFaultDetail = !sensorOk && sensorFault?.active ? sensorFault.detail : null;
   const pvColor = sensorOk ? getTemperatureColor(potState.pv) : 'var(--color-text-muted)';
   const svColor = getTemperatureColor(localSV);
   const glowIntensity = type !== 'MLT' && potState.heaterOn ? effectiveEfficiency / 100 : 0;
@@ -111,9 +114,12 @@ function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, 
       <div className={styles.tempDisplay}>
         <div className={`${styles.pvSection} ${type === 'MLT' ? styles.mltTemp : ''}`}>
           {type !== 'MLT' && <div className={styles.pvLabel}>Current</div>}
-          <div className={styles.pvValue} style={{ color: pvColor }} title={sensorOk ? undefined : 'Sensor not responding'}>
+          <div className={styles.pvValue} style={{ color: pvColor }}>
             {sensorOk ? `${potState.pv.toFixed(1)}°` : '--'}
           </div>
+          {sensorFaultDetail && (
+            <div className={styles.sensorFault}>Sensor {sensorFaultDetail}</div>
+          )}
         </div>
         {type !== 'MLT' && potState.regulationEnabled && (
           <div className={styles.svSection}>
@@ -198,6 +204,8 @@ function potCardEqual(prev, next) {
   if (prev.efficiencyCap !== next.efficiencyCap) return false;
   if (prev.onUpdate !== next.onUpdate) return false;
   if (prev.regulationConfig !== next.regulationConfig) return false;
+  if (prev.sensorFault?.active !== next.sensorFault?.active) return false;
+  if (prev.sensorFault?.detail !== next.sensorFault?.detail) return false;
   const ps = prev.potState, ns = next.potState;
   if (ps.pv !== ns.pv) return false;
   if (ps.sv !== ns.sv) return false;

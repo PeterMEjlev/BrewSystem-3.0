@@ -11,12 +11,14 @@ is visible by reading the route and all of it is silent when it breaks:
   * a session started today sends no timestamp at all, so BrewPlanner stamps
     the clock time the brew actually started rather than midnight;
   * every way of not getting an answer leaves the rig usable — the picker greys
-    out, the keg board keeps its own colours — because a web server that is
-    rebooting is not a reason to stop brewing.
+    out, the keg board keeps its own colours, the stage controls stay live on a
+    brew this rig started — because a web server that is rebooting is not a
+    reason to stop brewing.
 
 BrewPlanner is stood in for with an httpx transport, so these run on a bench
 with no web server anywhere near them.
 """
+import asyncio
 import json
 
 import httpx
@@ -317,3 +319,109 @@ def test_no_brewplanner_greys_the_choice_out_rather_than_erroring(client, monkey
     assert response.json()["available"] is False
     assert response.json()["recipes"] == []
     assert "BREW_PLANNER_URL" in response.json()["error"]
+
+
+# ── Is a brew session running? ────────────────────────────────────────────────
+#
+# The flag behind the stage controls on both screens — this rig's card and the
+# one BrewPlanner's dashboard mirrors it with. It is a gate on a control, so the
+# case that matters is the one where BrewPlanner doesn't answer: a rebooting web
+# server must not take the stage buttons away from a brewer mid-mash.
+
+def sessions(*statuses):
+    """A brew-session list in BrewPlanner's shape, newest first."""
+    return [
+        {"id": i, "status": status, "recipeId": "123456", "recipe": {"name": "Wedding NEIPA"}}
+        for i, status in enumerate(statuses, start=1)
+    ]
+
+
+def test_a_batch_being_brewed_turns_the_stage_controls_on(app_module, brewplanner):
+    brewplanner.handler = lambda request: httpx.Response(200, json=sessions("brewing"))
+
+    assert asyncio.run(app_module._refresh_brew_session_active()) is True
+    assert app_module._brew_session_active is True
+
+
+def test_a_batch_already_fermenting_does_not(app_module, brewplanner):
+    """The brewing system is not in use — the wort is in the tank.
+
+    This is the whole distinction the gate rests on: the logbook stays open for
+    weeks after the brew day, and a stage mark belongs to the day.
+    """
+    brewplanner.handler = lambda request: httpx.Response(
+        200, json=sessions("fermenting", "packaged")
+    )
+
+    assert asyncio.run(app_module._refresh_brew_session_active()) is True
+    assert app_module._brew_session_active is False
+
+
+def test_the_end_of_a_brew_day_switches_the_controls_off(app_module, brewplanner):
+    """Moving the batch to `fermenting` in BrewPlanner is what ends it."""
+    app_module._brew_session_active = True
+    brewplanner.handler = lambda request: httpx.Response(200, json=sessions("fermenting"))
+
+    asyncio.run(app_module._refresh_brew_session_active())
+
+    assert app_module._brew_session_active is False
+
+
+def test_an_unreachable_brewplanner_leaves_a_brew_this_rig_started_alone(app_module, brewplanner):
+    """The one that would ruin a brew day: the other Pi reboots mid-mash.
+
+    No answer is not a "no". The rig remembers the session it opened — on disk,
+    so even its own restart doesn't lose it — and keeps the controls live.
+    """
+    app_module._active_brew_session = {"brewSessionId": 1, "name": "Wedding NEIPA"}
+
+    def refuse(request):
+        raise httpx.ConnectError("no route to host", request=request)
+
+    brewplanner.handler = refuse
+
+    assert asyncio.run(app_module._refresh_brew_session_active()) is False
+    assert app_module._brew_session_active is True
+
+
+def test_an_unreachable_brewplanner_with_no_brew_here_leaves_them_off(app_module, brewplanner):
+    """A rig on the bench with the web server off is not brewing anything."""
+    def refuse(request):
+        raise httpx.ConnectError("no route to host", request=request)
+
+    brewplanner.handler = refuse
+
+    assert asyncio.run(app_module._refresh_brew_session_active()) is False
+    assert app_module._brew_session_active is False
+
+
+def test_an_unreadable_answer_counts_as_no_answer(app_module, brewplanner):
+    """200 with something that isn't a session list is not a trustworthy "no"."""
+    app_module._active_brew_session = {"brewSessionId": 1, "name": "Wedding NEIPA"}
+    brewplanner.handler = lambda request: httpx.Response(200, json={"error": "nope"})
+
+    assert asyncio.run(app_module._refresh_brew_session_active()) is False
+    assert app_module._brew_session_active is True
+
+
+def test_starting_a_session_here_switches_the_controls_on_at_once(client, brewplanner):
+    """Without waiting out a poll: the row exists, so the stage can be stepped."""
+    assert client.post(
+        "/api/brew-planner/brew-sessions", json={"recipeId": "123456"}
+    ).status_code == 200
+
+    assert client.get("/api/hardware/state").json()["brewSession"]["active"] is True
+
+
+def test_rolling_the_log_puts_the_controls_back(client, app_module, brewplanner):
+    """"Initialize" ends the brew this rig was on, session and all."""
+    client.post("/api/brew-planner/brew-sessions", json={"recipeId": "123456"})
+
+    app_module._start_fresh_session()
+
+    assert client.get("/api/hardware/state").json()["brewSession"]["active"] is False
+
+
+def test_the_state_says_whether_a_session_is_running(client):
+    """Read off the snapshot the card already holds, not a round trip per render."""
+    assert client.get("/api/hardware/state").json()["brewSession"] == {"active": False}

@@ -316,6 +316,16 @@ function BrewingPanel() {
   // the backend was started, which being unable to reach it does not change.
   const systemWarnings = live.state?.systemWarnings ?? {};
 
+  // Which sensors have failed and what to check about each — decided by the
+  // backend (see _sensor_fault_report), so the guidance is the same here, on
+  // BrewPlanner's remote view, and in the log. Suppressed while the backend is
+  // unreachable for the same reason the heat faults are: the fault data would
+  // be as stale as the temperatures, and one loud banner beats several.
+  const sensorFaults = live.state?.sensorFaults ?? {};
+  const activeSensorFaults = frozenSince != null
+    ? []
+    : Object.entries(sensorFaults).filter(([, fault]) => fault?.active);
+
   return (
     <div className={styles.brewingPanel}>
       {systemWarnings.configFallback?.active && (
@@ -337,6 +347,11 @@ function BrewingPanel() {
           {new Date(frozenSince).toLocaleTimeString([], { hour12: false })}. Controls are inactive.
         </div>
       )}
+      {activeSensorFaults.map(([pot, fault]) => (
+        <div key={`sensor-${pot}`} className={styles.sensorFaultBanner}>
+          ⚠ {pot.toUpperCase()} sensor {fault.detail}.
+        </div>
+      ))}
       {activeHeatFaults.map(([pot, fault]) => (
         <div key={pot} className={styles.heatFaultBanner}>
           ⚠ {pot} is not heating — element on for {Math.round(fault.seconds / 60)} min
@@ -355,6 +370,7 @@ function BrewingPanel() {
           potMaxWatts={BK_MAX_WATTS}
           efficiencyCap={bkCap}
           onUpdate={onUpdateBK}
+          sensorFault={sensorFaults.bk}
         />
         {/* MLT carries no heater controls, so its column is the short one —
             which is the room the stage card takes, rather than a new row that
@@ -369,6 +385,7 @@ function BrewingPanel() {
             potMaxWatts={0}
             efficiencyCap={100}
             onUpdate={onUpdateMLT}
+            sensorFault={sensorFaults.mlt}
           />
           <BrewStageCard />
         </div>
@@ -381,6 +398,7 @@ function BrewingPanel() {
           potMaxWatts={HLT_MAX_WATTS}
           efficiencyCap={hltCap}
           onUpdate={onUpdateHLT}
+          sensorFault={sensorFaults.hlt}
         />
       </div>
 

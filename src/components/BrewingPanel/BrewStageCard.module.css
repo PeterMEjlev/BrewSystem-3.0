@@ -12,6 +12,14 @@
   box-shadow: var(--shadow-card);
 }
 
+/* No brew session in the logbook: nothing for a stage mark to belong to, so the
+   card is read-only and says so on its meta line (see BrewStageCard.jsx). The
+   chevrons dim themselves through :disabled, hence the whole-card rule stopping
+   at the body. */
+.inactive .body {
+  opacity: 0.45;
+}
+
 .body {
   flex: 1;
   min-width: 0;

@@ -206,3 +206,17 @@
 .slider:disabled::-moz-range-thumb {
   cursor: not-allowed;
 }
+
+/* Sits under the '--' where the temperature would be, so the card itself says
+   why it has no reading. Wraps rather than truncates: the text is the
+   instruction, and half of it is no use. */
+.sensorFault {
+  color: #fbbf24;
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: 1.3;
+  margin-top: 4px;
+  max-width: 22ch;
+  text-align: center;
+  text-wrap: balance;
+}

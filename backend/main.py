@@ -105,6 +105,19 @@ _last_good_reading: Dict[str, Optional[float]] = {"bk": None, "mlt": None, "hlt"
 _last_good_at: Dict[str, float] = {"bk": 0.0, "mlt": 0.0, "hlt": 0.0}
 _sensor_status: Dict[str, str] = {"bk": "ok", "mlt": "ok", "hlt": "ok"}
 
+# The resolution the sensors are driven at. Set once at startup — and again
+# whenever a sensor comes back, because this lives in the chip's scratchpad
+# rather than its EEPROM: a sensor that leaves the bus and returns is at the
+# 12-bit power-on default, converting for 750 ms while the kernel still expects
+# the 188 ms it was told to wait.
+_DS18B20_RESOLUTION = "10"
+
+# Whether each sensor's device node was on the bus at the previous sweep, so
+# that a sensor reappearing can be noticed. The kernel drops a slave that misses
+# enough bus scans and re-adds it when it answers again; nothing else in here
+# would otherwise see either event, because both look like the same None.
+_sensor_node_present: Dict[str, bool] = {"bk": True, "mlt": True, "hlt": True}
+
 
 def _hold_through_dropouts(
     temps: Dict[str, Optional[float]], now: Optional[float] = None
@@ -164,6 +177,90 @@ def _hold_through_dropouts(
     return published
 
 
+# What to tell the brewer for each way a sensor read can fail. The mapping lives
+# here rather than in either UI because it is knowledge about a 1-Wire bus, not
+# about presentation — and because both the rig's own screen and BrewPlanner's
+# remote view need the same sentence, in two codebases and two languages.
+#
+# Each reads as the tail of "<POT> sensor ...", and names what to go and check.
+_SENSOR_FAULT_GUIDANCE = {
+    utils_rpi.FAILURE_NO_PRESENCE:
+        "is not answering the bus — check the probe's wiring and connections",
+    utils_rpi.FAILURE_ABSENT:
+        "has dropped off the 1-Wire bus — check the probe's wiring and connections",
+    utils_rpi.FAILURE_CRC:
+        "is returning corrupt data — check for loose wiring or interference",
+    utils_rpi.FAILURE_MALFORMED:
+        "is returning readings that cannot be parsed",
+    utils_rpi.FAILURE_IO:
+        "could not be read from the 1-Wire bus",
+}
+_SENSOR_FAULT_FALLBACK = "is not reading"
+
+
+def _sensor_fault_report() -> Dict[str, Any]:
+    """Why each sensor is not reading, in the shape clients hold it.
+
+    Only a sensor that has genuinely failed reports a fault. A held reading is a
+    three-second bridge over one dropped transaction (see _hold_through_dropouts)
+    and putting a banner on the screen for it would train the brewer to ignore
+    the banner.
+
+    Settles as soon as a fault does, so it diffs to nothing and a rig sitting
+    with a dead probe costs a connected client no traffic.
+    """
+    sensors = read_config()["sensors"]["ds18b20"]
+    report: Dict[str, Any] = {}
+    for pot in ("bk", "mlt", "hlt"):
+        serial = sensors.get(pot)
+        failed = _sensor_status.get(pot) == "failed"
+        reason = utils_rpi.last_failure_reason(serial) if serial else None
+        report[pot] = {
+            "active": failed,
+            "reason": reason if failed else None,
+            "detail": (
+                _SENSOR_FAULT_GUIDANCE.get(reason, _SENSOR_FAULT_FALLBACK)
+                if failed else None
+            ),
+        }
+    return report
+
+
+async def _resync_returned_sensors(sensors: Dict[str, Any]) -> None:
+    """Re-apply the configured resolution to any sensor that has just returned.
+
+    A sensor that drops off the bus comes back at its power-on default, and
+    before this nothing re-applied the startup setting — so a rig that lost a
+    probe once ran that probe at the wrong resolution until the service was
+    next restarted, which on this rig has meant weeks.
+
+    Presence is cheap to check (a stat per sensor) and is the honest trigger:
+    the resolution file only exists while the kernel has the device registered,
+    so keying off a successful read would miss the window where the node is
+    back but the sensor has not answered yet.
+    """
+    logger = logging.getLogger(__name__)
+    for pot in ("bk", "mlt", "hlt"):
+        serial = sensors.get(pot)
+        if not serial:
+            continue
+        present = utils_rpi.sensor_present(serial)
+        was_present = _sensor_node_present.get(pot, present)
+        _sensor_node_present[pot] = present
+        if present and not was_present:
+            logger.info("%s sensor is back on the bus — re-applying %s-bit resolution.",
+                        pot.upper(), _DS18B20_RESOLUTION)
+            await asyncio.to_thread(
+                utils_rpi.initialize_ds18b20_resolution, serial, _DS18B20_RESOLUTION
+            )
+        elif was_present and not present:
+            logger.error(
+                "%s sensor has been dropped from the 1-Wire bus by the kernel — "
+                "it stopped answering bus scans. Reads will fail silently until "
+                "it is rediscovered.", pot.upper(),
+            )
+
+
 async def _temperature_read_loop():
     """Background task: continuously read all sensors and update the in-memory cache,
     then run one regulation pass so heater control lives here — not in the browser.
@@ -187,6 +284,7 @@ async def _temperature_read_loop():
             _last_read_time = time.monotonic()
             _regulation_tick(config)
             _heat_fault_tick(config)
+            await _resync_returned_sensors(sensors)
         except Exception as e:
             logger.error("Temp read/regulation error: %s", e)
         # Offer the tick's result to the sockets. Nothing goes out unless
@@ -344,7 +442,8 @@ async def lifespan(app: FastAPI):
     for pot in ("bk", "mlt", "hlt"):
         serial = sensors.get(pot)
         if serial:
-            utils_rpi.initialize_ds18b20_resolution(serial, resolution="10")
+            _sensor_node_present[pot] = utils_rpi.sensor_present(serial)
+            utils_rpi.initialize_ds18b20_resolution(serial, resolution=_DS18B20_RESOLUTION)
     global _ws_lock, _broadcast_wanted
     _ws_lock = asyncio.Lock()
     _broadcast_wanted = asyncio.Event()
@@ -352,8 +451,9 @@ async def lifespan(app: FastAPI):
     log_task = asyncio.create_task(_temperature_log_loop())
     watchdog_task = asyncio.create_task(_safety_watchdog_loop())
     broadcast_task = asyncio.create_task(_broadcast_loop())
+    brew_session_task = asyncio.create_task(_brew_session_poll_loop())
     yield
-    tasks = (read_task, log_task, watchdog_task, broadcast_task)
+    tasks = (read_task, log_task, watchdog_task, broadcast_task, brew_session_task)
     for task in tasks:
         task.cancel()
     for task in tasks:
@@ -504,6 +604,86 @@ def _step_brew_stage(delta: int) -> None:
             marker for marker in _stage_state["markers"] if marker["index"] <= target
         ]
     _stage_state["index"] = target
+
+
+# ─── Is there a brew session behind today's brew? ─────────────────────────────
+#
+# A stage mark exists to label a logged session's temperature curve, so with no
+# session in BrewPlanner's logbook there is nothing for one to belong to and the
+# stage card goes inert (see BrewStageCard.jsx). Brewing without a session stays
+# entirely legitimate — cleaning, a water test, a boil to season an element —
+# it simply isn't a brew day anything is being recorded against.
+#
+# BrewPlanner owns the answer, because BrewPlanner owns the logbook. But it is
+# on the other Pi, and a rig in the middle of a mash cannot lose its stage
+# controls because the web server is rebooting. So: ask it on a slow poll, and
+# when it cannot be reached fall back to this rig's own memory of the session it
+# started, which survives a restart on disk. Only a BrewPlanner that answers can
+# turn the controls off.
+#
+# Cached rather than looked up per request: the flag rides out on the same state
+# broadcast as everything else, so the card is drawn from the snapshot a client
+# already holds instead of a LAN round trip per render.
+
+# Slow on purpose. A session is started once a brew day, and the two moments it
+# changes here — starting one from this rig, picking one back up after a restart
+# — set the flag directly rather than waiting for a sweep.
+_BREW_SESSION_POLL_SECONDS = 30
+
+# And slower still once BrewPlanner has stopped answering. A failed read writes
+# a warning to the log, and the rig sits on the bench with the web server off
+# for most of the year; at the fast cadence that is a line every half minute,
+# all year, about a machine nobody expected to be on.
+_BREW_SESSION_QUIET_SECONDS = 300
+
+_brew_session_active: bool = False
+
+
+def _brew_session_report() -> Dict[str, Any]:
+    """The flag in the shape clients hold it, with the same keys every time."""
+    return {"active": _brew_session_active}
+
+
+def _set_brew_session_active(active: bool) -> None:
+    """Set the flag, pushing only when it actually moved."""
+    global _brew_session_active
+    if _brew_session_active == active:
+        return
+    _brew_session_active = active
+    _schedule_broadcast()
+
+
+async def _refresh_brew_session_active() -> bool:
+    """Ask BrewPlanner, falling back to what this rig remembers starting.
+
+    Answers whether BrewPlanner was the one who said so, which is what sets the
+    cadence of the next ask.
+    """
+    answer = await brew_planner.active_brew()
+    reachable = bool(answer.get("reachable"))
+    if reachable:
+        _set_brew_session_active(bool(answer.get("active")))
+    else:
+        # No answer is not a "no". A brew started from this screen is still a
+        # brew, and its row in the logbook is still there to be written to.
+        _set_brew_session_active(_active_brew_session is not None)
+    return reachable
+
+
+async def _brew_session_poll_loop():
+    """Keep the flag in step with the logbook for as long as the rig is up."""
+    logger = logging.getLogger(__name__)
+    while True:
+        reachable = False
+        try:
+            reachable = await _refresh_brew_session_active()
+        except Exception as e:
+            # Never fatal: worst case the flag stays where it was, which is the
+            # last thing BrewPlanner or this rig actually knew.
+            logger.error("Brew-session check failed: %s", e)
+        await asyncio.sleep(
+            _BREW_SESSION_POLL_SECONDS if reachable else _BREW_SESSION_QUIET_SECONDS
+        )
 
 
 # ─── Surviving a restart ──────────────────────────────────────────────────────
@@ -735,6 +915,9 @@ def _restore_interrupted_session() -> Optional[Dict[str, Any]]:
     _restore_setpoints(blob)
     saved_session = blob.get("brewSession")
     _active_brew_session = saved_session if isinstance(saved_session, dict) else None
+    # So the stage controls are right on the first frame after a restart,
+    # rather than dead until the first BrewPlanner sweep lands.
+    _set_brew_session_active(_active_brew_session is not None)
 
     index = _stage_state["index"]
     return {
@@ -799,6 +982,10 @@ def _start_fresh_session() -> None:
     _reset_brew_stage()
     _reset_timer()
     _active_brew_session = None
+    # Cleared with it, so "Initialize" leaves the stage card inert until the
+    # next poll hears otherwise from BrewPlanner. The logbook still outranks
+    # this: a session running there switches the card back on within a sweep.
+    _set_brew_session_active(False)
     _pending_resume = None
     _save_session_state()
 
@@ -1490,6 +1677,9 @@ def _state_snapshot() -> Dict[str, Any]:
         # see _hold_through_dropouts. Settled almost always, so it diffs to
         # nothing and costs a connected client no traffic.
         "sensorHeld": {pot: status == "held" for pot, status in _sensor_status.items()},
+        # And which sensor has actually failed, with what to go and check about
+        # it — a bare "--" on the panel says something is wrong but not what.
+        "sensorFaults": _sensor_fault_report(),
         "controlState": copy.deepcopy(_control_state),
         "timer": {
             "running": _timer_state["running"],
@@ -1497,6 +1687,7 @@ def _state_snapshot() -> Dict[str, Any]:
             "target": _timer_state["target"],
         },
         "brewStage": _brew_stage_report(),
+        "brewSession": _brew_session_report(),
         "sessionResume": _session_resume_report(),
         "heatFaults": _heat_fault_report(),
         "systemWarnings": _system_warnings(),
@@ -2089,6 +2280,9 @@ async def start_brew_session(body: StartBrewSessionRequest) -> Dict[str, Any]:
         "recipeId": body.recipeId,
         "name": (session.get("recipe") or {}).get("name", "") if isinstance(session, dict) else "",
     }
+    # BrewPlanner has just made the row, so don't make the brewer wait a sweep
+    # for the stage controls that belong to it.
+    _set_brew_session_active(True)
     _save_session_state()
     _schedule_broadcast()
     await _broadcast({"type": "session_reset"})

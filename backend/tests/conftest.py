@@ -103,6 +103,9 @@ def app_module(tmp_path, monkeypatch, gpio):
     # log directory above and the in-process memory of it cleared — otherwise
     # one test's interrupted brew is offered to the next one.
     monkeypatch.setattr(main, "_active_brew_session", None)
+    # The gate on the stage controls, cached from BrewPlanner's answer — off
+    # unless the test under way says a brew session is running.
+    monkeypatch.setattr(main, "_brew_session_active", False)
     monkeypatch.setattr(main, "_pending_resume", None)
     monkeypatch.setattr(main, "_last_saved_session_state", None)
     main._temperature_cache.update({"bk": None, "mlt": None, "hlt": None})
@@ -111,6 +114,11 @@ def app_module(tmp_path, monkeypatch, gpio):
     main._last_good_reading.update({"bk": None, "mlt": None, "hlt": None})
     main._last_good_at.update({"bk": 0.0, "mlt": 0.0, "hlt": 0.0})
     main._sensor_status.update({"bk": "ok", "mlt": "ok", "hlt": "ok"})
+    # Bus-presence memory and the per-serial failure reasons are both module
+    # state that survives an import, so one test's missing sensor would
+    # otherwise look like the next test's sensor coming back.
+    main._sensor_node_present.update({"bk": True, "mlt": True, "hlt": True})
+    utils_rpi._last_failure.clear()
     for pot in main._heat_watch:
         main._heat_watch[pot].update({"since": None, "baseline": None, "faulted_at": None})
 

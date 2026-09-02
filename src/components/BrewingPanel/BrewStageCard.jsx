@@ -1,5 +1,10 @@
 import { useSyncExternalStore } from 'react';
-import { subscribeBrewStage, getBrewStage, stepBrewStage } from '../../utils/brewStage';
+import {
+  subscribeBrewStage,
+  getBrewStage,
+  getBrewSessionActive,
+  stepBrewStage,
+} from '../../utils/brewStage';
 import { playToggleOn, playToggleOff } from '../../utils/sounds';
 import styles from './BrewStageCard.module.css';
 
@@ -14,9 +19,18 @@ const formatClock = (ms) =>
  * has to remember the running order — and the forward chevron is the warm one
  * because going forward is the thing being done all day, while going back is
  * undoing a wrong tap.
+ *
+ * With no brew session in BrewPlanner's logbook the card goes inert. A stage
+ * mark is a label on a logged session's temperature curve, so with no session
+ * there is nothing for one to belong to — and brewing without a session is a
+ * normal thing to be doing here (cleaning, a water test, seasoning an element),
+ * not a state to be nagged about. Dimmed rather than removed: the panel is one
+ * screen with no room to redistribute, and a card appearing under the brewer's
+ * hand would move the pumps at the moment a brew starts.
  */
 function BrewStageCard() {
   const { stages, index, markers } = useSyncExternalStore(subscribeBrewStage, getBrewStage);
+  const sessionActive = useSyncExternalStore(subscribeBrewStage, getBrewSessionActive);
 
   const notStarted = index < 0;
   const complete = index >= stages.length;
@@ -38,6 +52,10 @@ function BrewStageCard() {
   const ahead = complete ? null : notStarted ? stages[0] : nextStage ?? 'Finish brew';
   const since = enteredAt == null ? null : `${complete ? 'ended' : 'since'} ${formatClock(enteredAt)}`;
 
+  // Why the chevrons are dead, in the line that would otherwise name the stage
+  // ahead — where the brewer is already looking for what happens next.
+  const meta = sessionActive ? ahead && `› ${ahead}` : 'No brew session';
+
   const handleForward = () => {
     playToggleOn();
     stepBrewStage(1);
@@ -49,11 +67,11 @@ function BrewStageCard() {
   };
 
   return (
-    <div className={styles.stageCard}>
+    <div className={`${styles.stageCard} ${sessionActive ? '' : styles.inactive}`}>
       <button
         className={styles.backBtn}
         onClick={handleBack}
-        disabled={notStarted}
+        disabled={!sessionActive || notStarted}
         aria-label="Previous stage"
       >
         ‹
@@ -64,20 +82,26 @@ function BrewStageCard() {
           <span className={styles.label}>Brew Stage</span>
           <span className={styles.step}>{step}</span>
         </div>
-        <div className={`${styles.heading} ${notStarted || complete ? styles.headingIdle : ''}`}>
+        <div
+          className={`${styles.heading} ${
+            notStarted || complete || !sessionActive ? styles.headingIdle : ''
+          }`}
+        >
           {heading}
         </div>
         <div className={styles.meta}>
-          <span className={styles.ahead}>{ahead && `› ${ahead}`}</span>
-          {since && <span className={styles.since}>{since}</span>}
+          <span className={styles.ahead}>{meta}</span>
+          {sessionActive && since && <span className={styles.since}>{since}</span>}
         </div>
       </div>
 
       <button
         className={styles.forwardBtn}
         onClick={handleForward}
-        disabled={complete}
-        aria-label={complete ? 'Brew complete' : `Next stage: ${ahead}`}
+        disabled={!sessionActive || complete}
+        aria-label={
+          !sessionActive ? 'No brew session' : complete ? 'Brew complete' : `Next stage: ${ahead}`
+        }
       >
         ›
       </button>

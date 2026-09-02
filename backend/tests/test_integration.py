@@ -55,8 +55,9 @@ def test_the_websocket_hands_out_a_full_snapshot(client):
         message = ws.receive_json()
     assert message["type"] == "snapshot"
     assert set(message["state"]) == {
-        "temperatures", "sensorHeld", "controlState", "timer", "brewStage",
-        "sessionResume", "heatFaults", "systemWarnings",
+        "temperatures", "sensorHeld", "sensorFaults", "controlState", "timer",
+        "brewStage", "brewSession", "sessionResume", "heatFaults",
+        "systemWarnings",
     }
 
 

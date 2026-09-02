@@ -93,17 +93,25 @@ async def _read(path: str, what: str) -> Any:
 async def active_brew() -> Dict[str, Any]:
     """The brew session BrewPlanner has in progress, if any.
 
-    Answers `{"active": False}` for every way there might not be one — no web
-    server configured, unreachable, nothing being brewed — because the caller
-    does the same thing in all of them.
+    Answers `active: False` for every way there might not be one — no web
+    server configured, unreachable, nothing being brewed — because the routing
+    callers (the start menu, the Recipe tab) do the same thing in all of them.
+
+    `reachable` separates the two kinds of "no": BrewPlanner said there is no
+    brew, versus BrewPlanner could not be asked. Only the first is a fact about
+    the brewery. It exists for the caller that gates a control on the answer
+    (main's brew-session flag), which must not switch the stage buttons off
+    mid-brew just because the other Pi is rebooting.
     """
     try:
         sessions = await _read("/api/brew-sessions", "brew-session list")
     except BrewPlannerError:
-        return {"active": False}
+        return {"active": False, "reachable": False}
 
     if not isinstance(sessions, list):
-        return {"active": False}
+        # It answered, but with something that is not a session list. Not a
+        # trustworthy "no", so it counts as not having been asked.
+        return {"active": False, "reachable": False}
 
     # The list arrives newest first, so the first match is the current one.
     for session in sessions:
@@ -115,12 +123,13 @@ async def active_brew() -> Dict[str, Any]:
             # BrewPlanner had a UUID that meant nothing to it.
             return {
                 "active": True,
+                "reachable": True,
                 "brewSessionId": session.get("id"),
                 "recipeId": str(session.get("recipeId") or "") or None,
                 "name": snapshot.get("name", ""),
             }
 
-    return {"active": False}
+    return {"active": False, "reachable": True}
 
 
 def _slim_recipe(recipe: Dict[str, Any]) -> Dict[str, Any]:

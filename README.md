@@ -105,6 +105,15 @@ Worth knowing:
   those marks are the vertical rules on the temperature chart. They are stamped
   into the session log, so rolling the log — `initialize`, or starting a brew
   session — starts the stages over with it.
+- **The stage card is live only during a logged brew session.** A stage mark
+  labels a logged session's curve, so with no session in BrewPlanner's logbook
+  there is nothing for one to belong to and the card dims with its chevrons
+  disabled. The backend caches the answer (`brewSession.active` on the state
+  snapshot), asking BrewPlanner every 30 s and falling back to the session this
+  rig remembers starting whenever the web server can't be reached — so a hub
+  reboot mid-mash never takes the stage buttons away. Brewing with no session
+  (cleaning, a water test, seasoning an element) is otherwise unaffected: it is
+  simply not a brew day anything is being recorded against.
 
 ### Picking up a deploy
 

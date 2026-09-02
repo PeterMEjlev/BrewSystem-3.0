@@ -27,6 +27,20 @@
 /* Amber, not red: a heater that isn't heating is something to go and check,
    not the total loss of readings the red banner above means. Deliberately
    different at a glance so the two are never confused across the brewery. */
+/* A failed probe is a fault to go and fix, not an emergency in progress — so
+   it reads like the heat-fault banner but does not pulse for attention the way
+   a pot that is on and not heating does. */
+.sensorFaultBanner {
+  background: #78350f;
+  border: 2px solid #f59e0b;
+  border-radius: 12px;
+  color: #fde68a;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  padding: 12px 20px;
+  text-align: center;
+}
+
 .heatFaultBanner {
   background: #78350f;
   border: 2px solid #f59e0b;

@@ -48,6 +48,28 @@ const isDevEnvironment = () => {
 // useSyncExternalStore will re-render forever.
 const NOT_YET_KNOWN = { stages: BREW_STAGES, index: STAGE_NOT_STARTED, markers: [] };
 
+/**
+ * Whether a brew session is running in BrewPlanner's logbook — the backend's
+ * answer, cached there and pushed on the same socket (see main.py). It is what
+ * decides whether the stage can be stepped at all: a mark exists to label a
+ * logged session's curve, so without one there is nothing to mark.
+ *
+ * Development has no backend to ask, and a dev browser can't reach BrewPlanner
+ * to start a session either, so the panel is developed as though a brew were
+ * running. Set `brewSessionActive` to "false" in localStorage to work on the
+ * inert card instead.
+ */
+export function getBrewSessionActive() {
+  if (isDevEnvironment()) {
+    try {
+      return localStorage.getItem('brewSessionActive') !== 'false';
+    } catch {
+      return true;
+    }
+  }
+  return getLiveState().state?.brewSession?.active ?? false;
+}
+
 let devState = NOT_YET_KNOWN;
 const devSubscribers = new Set();
 
