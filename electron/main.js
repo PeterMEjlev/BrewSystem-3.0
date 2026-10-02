@@ -199,6 +199,25 @@ function watchDisplayChanges(win) {
   win.on('resize', () => scheduleKioskRestore('resized', 1500));
 }
 
+// --- Renderer lifecycle -------------------------------------------------
+// The renderer owns the idle timer, so its idea of whether the panel is asleep
+// is the one touches are judged against — and a page that has just loaded
+// always thinks the panel is lit. Reloaded while the panel was dark (a new
+// build landing, the crash screen's countdown, a renderer restart), it would
+// take the first touch as ordinary activity, never ask for a wake, and leave
+// the panel dark for good. So any page load turns the panel back on first.
+//
+// And a renderer that dies leaves an empty window with nothing in it to touch,
+// so bring it straight back rather than waiting for someone to notice.
+function watchRenderer(win) {
+  const wc = win.webContents;
+  wc.on('did-start-loading', () => { wakeDisplay(); });
+  wc.on('render-process-gone', (_event, details) => {
+    console.error(`[Kiosk] Renderer gone (${details.reason}, exit ${details.exitCode}) — reloading`);
+    setTimeout(() => { if (!win.isDestroyed()) wc.reload(); }, 2000);
+  });
+}
+
 const BRUCE_STATE_PREFIX = '@@BRUCE_STATE:';
 const BRUCE_MSG_PREFIX = '@@BRUCE_MSG:';
 
@@ -366,6 +385,7 @@ async function createWindow() {
 
   configureDisplayPower();
   watchDisplayChanges(win);
+  watchRenderer(win);
 
   // Escape hatch: Ctrl+Shift+Q to quit kiosk mode
   globalShortcut.register('CommandOrControl+Shift+Q', () => {

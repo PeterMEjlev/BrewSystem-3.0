@@ -10,7 +10,7 @@ const DEFAULT_REG_CONFIG = {
   steps: DEFAULT_AUTO_EFFICIENCY.bk.steps,
 };
 
-function PotCard({ name, type, potState, regulationConfig = DEFAULT_REG_CONFIG, effectiveEfficiency = 0, potMaxWatts = 0, efficiencyCap = 100, onUpdate }) {
+function PotCard({ name, type, potState, sensorFault, regulationConfig = DEFAULT_REG_CONFIG, effectiveEfficiency = 0, potMaxWatts = 0, efficiencyCap = 100, onUpdate }) {
   const [localSV, setLocalSV] = useState(potState.sv || 75);
   const [localEfficiency, setLocalEfficiency] = useState(potState.efficiency || 0);
 

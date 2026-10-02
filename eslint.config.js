@@ -4,6 +4,22 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
+// `npm run build` runs this first and refuses to build on any error, and the
+// rig's deploy builds before it restarts anything — so an error here is what
+// keeps a broken bundle off the kiosk. That only works if errors mean "this will
+// break at runtime": an undefined name (a prop used but never destructured
+// blanked the whole brewing screen once), a hook called conditionally, a
+// reassigned const. Style and React-purity advice stays visible as warnings,
+// because a gate that is always red gets bypassed.
+const ADVISORY = {
+  'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]' }],
+  'no-empty': 'warn',
+  'react-hooks/set-state-in-effect': 'warn',
+  'react-hooks/refs': 'warn',
+  'react-hooks/purity': 'warn',
+  'react-refresh/only-export-components': 'warn',
+}
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -22,8 +38,14 @@ export default defineConfig([
         sourceType: 'module',
       },
     },
-    rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+    rules: ADVISORY,
+  },
+  {
+    // The Electron side is CommonJS running under Node, not the browser.
+    files: ['electron/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { ...globals.node },
     },
   },
 ])
